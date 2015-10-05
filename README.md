@@ -5,6 +5,11 @@ Small app to attempt to find the restrictions PIN for an iOS device by brute for
 Written after the PIN was forgotten for a kid's device and wiping it would of been more work
 than writing this little program.
 
+## Download
+
+Binaries for Linux, Mac, Solaris and Windows can be found at the
+[latest releases](https://github.com/gwatts/pinfinder/releases) page.
+
 ## Usage
 
 Backup the device using iTunes on a desktop computer and then find the folder on the computer
