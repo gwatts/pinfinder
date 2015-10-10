@@ -1,5 +1,7 @@
 # Restrictions Pin Finder
 
+[![Build Status](https://travis-ci.org/gwatts/pinfinder.svg?branch=master)](https://travis-ci.org/gwatts/pinfinder)
+
 pinfinder is a small application which attempts to to find the restrictions PIN 
 for an iOS device by brute force examination of its iTunes backup.
 
