@@ -38,11 +38,77 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/user"
 	"path"
+	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
+	"time"
 
 	"golang.org/x/crypto/pbkdf2"
 )
+
+const maxPIN = 10000
+
+func isDir(p string) bool {
+	s, err := os.Stat(p)
+	if err != nil {
+		return false
+	}
+	return s.IsDir()
+}
+
+// figure out where iTunes keeps its backups on the current OS
+func findSyncDir() (string, error) {
+	usr, err := user.Current()
+	if err != nil {
+		return "", err
+	}
+	var dir string
+	switch runtime.GOOS {
+	case "darwin":
+		dir = filepath.Join(usr.HomeDir, "Library", "Application Support", "MobileSync", "Backup")
+	case "windows":
+		// vista & newer
+		dir = filepath.Join(usr.HomeDir, "AppData", "Roaming", "Apple Computer", "MobileSync", "Backup")
+		if !isDir(dir) {
+			// XP; untested.
+			dir = filepath.Join("Documents and Settings", usr.Username, "Application Data", "Apple Computer", "MobileSync", "Backup")
+		}
+	default:
+		return "", errors.New("Could not detect backup directory for this operating system; pass explicitly")
+	}
+	if !isDir(dir) {
+		return "", fmt.Errorf("Directory %s does not exist", dir)
+	}
+	return dir, nil
+}
+
+// Fidn the latest backup folder
+func findLatestBackup(backupDir string) (string, error) {
+	d, err := os.Open(backupDir)
+	if err != nil {
+		return "", err
+	}
+	files, err := d.Readdir(10000)
+	if err != nil {
+		return "", err
+	}
+	var newest string
+	var lastMT time.Time
+
+	for _, fi := range files {
+		if mt := fi.ModTime(); mt.After(lastMT) {
+			lastMT = mt
+			newest = fi.Name()
+		}
+	}
+	if newest != "" {
+		return filepath.Join(backupDir, newest), nil
+	}
+	return "", errors.New("No backup directories found in " + backupDir)
+}
 
 type Plist struct {
 	Keys []string `xml:"dict>key"`
@@ -93,32 +159,109 @@ func findRestrictions(fpath string) (*Plist, error) {
 	return nil, errors.New("No matching plist file - Are parental restrictions turned on?")
 }
 
-func main() {
-	if len(os.Args) != 2 {
-		fmt.Println("Usage:", path.Base(os.Args[0]), " <path to latest itunes backup directory>")
-		os.Exit(101)
+func parseRestrictions(pl *Plist) (pw, salt []byte) {
+	pw, _ = base64.StdEncoding.DecodeString(strings.TrimSpace(pl.Data[0]))
+	salt, _ = base64.StdEncoding.DecodeString(strings.TrimSpace(pl.Data[1]))
+	return pw, salt
+}
+
+type swg struct{ sync.WaitGroup }
+
+func (wg *swg) WaitChan() chan struct{} {
+	c := make(chan struct{}, 1)
+	go func() {
+		wg.Wait()
+		c <- struct{}{}
+	}()
+	return c
+}
+
+// use all available cores to brute force the PIN
+func findPIN(key, salt []byte) (string, error) {
+	found := make(chan string)
+	var wg swg
+	var start, end int
+
+	perCPU := maxPIN / runtime.NumCPU()
+
+	for i := 0; i < runtime.NumCPU(); i++ {
+		wg.Add(1)
+		if i == runtime.NumCPU()-1 {
+			end = maxPIN
+		} else {
+			end += perCPU
+		}
+
+		go func(start, end int) {
+			for j := start; j < end; j++ {
+				guess := fmt.Sprintf("%04d", j)
+				k := pbkdf2.Key([]byte(guess), salt, 1000, len(key), sha1.New)
+				if bytes.Equal(k, key) {
+					found <- guess
+					return
+				}
+			}
+			wg.Done()
+		}(start, end)
+
+		start += perCPU
 	}
 
-	path := os.Args[1]
+	select {
+	case <-wg.WaitChan():
+		return "", errors.New("failed to calculate PIN number.")
+	case pin := <-found:
+		return pin, nil
+	}
+}
 
-	pl, err := findRestrictions(path)
+func usage() {
+	fmt.Println("Usage:", path.Base(os.Args[0]), " [<path to latest itunes backup directory>]")
+	os.Exit(101)
+}
+
+func main() {
+	var backupDir, syncDir string
+	var err error
+
+	switch len(os.Args) {
+	case 1:
+		syncDir, err = findSyncDir()
+		if err != nil {
+			fmt.Println(err.Error)
+			usage()
+		}
+		backupDir, err = findLatestBackup(syncDir)
+		if err != nil {
+			fmt.Println(err.Error())
+			usage()
+		}
+	case 2:
+		backupDir = os.Args[1]
+	default:
+		usage()
+	}
+
+	if !isDir(backupDir) {
+		fmt.Println("Directory not found: ", backupDir)
+		usage()
+	}
+
+	fmt.Println("Searching backup at", backupDir)
+	pl, err := findRestrictions(backupDir)
 	if err != nil {
 		fmt.Println("Failed to find/load restrictions plist file: ", err)
 		os.Exit(102)
 	}
 
-	pw, _ := base64.StdEncoding.DecodeString(strings.TrimSpace(pl.Data[0]))
-	salt, _ := base64.StdEncoding.DecodeString(strings.TrimSpace(pl.Data[1]))
+	key, salt := parseRestrictions(pl)
 
-	for i := 0; i < 10000; i++ {
-		guess := fmt.Sprintf("%04d", i)
-		fmt.Println("Trying ", guess)
-		k := pbkdf2.Key([]byte(guess), salt, 1000, len(pw), sha1.New)
-		if bytes.Equal(k, pw) {
-			fmt.Println("Matched PIN", guess)
-			os.Exit(0)
-		}
+	fmt.Print("Finding PIN...")
+	startTime := time.Now()
+	pin, err := findPIN(key, salt)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(103)
 	}
-	fmt.Println("No match found")
-	os.Exit(103)
+	fmt.Printf(" FOUND!\nPIN number is: %s (found in %s)\n", pin, time.Since(startTime))
 }
