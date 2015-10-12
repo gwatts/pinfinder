@@ -2,7 +2,7 @@
 
 [![Build Status](https://travis-ci.org/gwatts/pinfinder.svg?branch=master)](https://travis-ci.org/gwatts/pinfinder)
 
-pinfinder is a small application which attempts to to find the restrictions PIN 
+pinfinder is a small application which attempts to to find the restrictions PIN/passcode
 for an iOS device by brute force examination of its iTunes backup.
 
 It was written after the PIN was forgotten for a kid's device and wiping it 
@@ -17,7 +17,11 @@ Binaries for Linux, Mac and Windows can be found at the
 
 1.  Backup the device using iTunes on a desktop computer.  NOTE: The "encrypt backup" option 
 must be disabled in iTunes.
-2. Run pinfinder from a command prompt.
+2. Run pinfinder from a command prompt:
+  * __Mac__: Right click on the `pinfinder` program and select "Open with Terminal.app" - You will receive a warning about the program being written by an unknown developer, which you'll need to accept to use it.  Alternatively start `Terminal.app` (located in `Applications->Utilities`) and run the program from there (eg. `Downloads/pinfinder`)
+  * __Windows__: Download the zip file and select `Open` - Drag `pinfinder` to your `Downloads` folder.  Right click on the start button and select `Command Prompt` - You should be able to type `Downloads\pinfinder.exe` to run the program.
+  * __Linux__: I doubt you need help ;-)
+
 
 pinfinder will attempt to find the latest backup and extract the restrictions PIN from it.
 
