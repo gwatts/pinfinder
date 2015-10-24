@@ -31,12 +31,15 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/xml"
 	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/user"
 	"path"
@@ -49,7 +52,14 @@ import (
 	"golang.org/x/crypto/pbkdf2"
 )
 
-const maxPIN = 10000
+const (
+	maxPIN  = 10000
+	version = "1.2.0"
+)
+
+var (
+	noPause = flag.Bool("nopause", false, "Set to true to prevent the program pausing for input on completion")
+)
 
 func isDir(p string) bool {
 	s, err := os.Stat(p)
@@ -110,13 +120,24 @@ func findLatestBackup(backupDir string) (string, error) {
 	return "", errors.New("No backup directories found in " + backupDir)
 }
 
-type Plist struct {
+type plist struct {
+	Path string
 	Keys []string `xml:"dict>key"`
 	Data []string `xml:"dict>data"`
 }
 
-func loadPlist(fn string) (*Plist, error) {
-	var p Plist
+func (p *plist) DumpTo(w io.Writer) error {
+	f, err := os.Open(p.Path)
+	if err != nil {
+		return fmt.Errorf("Failed to dump plist data: %s", err)
+	}
+	defer f.Close()
+	io.Copy(w, f)
+	return nil
+}
+
+func loadPlist(fn string) (*plist, error) {
+	var p plist
 	f, err := os.Open(fn)
 	if err != nil {
 		return nil, err
@@ -125,10 +146,11 @@ func loadPlist(fn string) (*Plist, error) {
 	if err := xml.NewDecoder(f).Decode(&p); err != nil {
 		return nil, err
 	}
+	p.Path = fn
 	return &p, nil
 }
 
-func findRestrictions(fpath string) (*Plist, error) {
+func findRestrictions(fpath string) (*plist, error) {
 	d, err := os.Open(fpath)
 	if err != nil {
 		return nil, err
@@ -159,7 +181,7 @@ func findRestrictions(fpath string) (*Plist, error) {
 	return nil, errors.New("No matching plist file - Are parental restrictions turned on?")
 }
 
-func parseRestrictions(pl *Plist) (pw, salt []byte) {
+func parseRestrictions(pl *plist) (pw, salt []byte) {
 	pw, _ = base64.StdEncoding.DecodeString(strings.TrimSpace(pl.Data[0]))
 	salt, _ = base64.StdEncoding.DecodeString(strings.TrimSpace(pl.Data[1]))
 	return pw, salt
@@ -209,23 +231,46 @@ func findPIN(key, salt []byte) (string, error) {
 
 	select {
 	case <-wg.WaitChan():
-		return "", errors.New("failed to calculate PIN number.")
+		return "", errors.New("failed to calculate PIN number")
 	case pin := <-found:
 		return pin, nil
 	}
 }
 
+func exit(status int, addUsage bool, errfmt string, a ...interface{}) {
+	if errfmt != "" {
+		fmt.Fprintf(os.Stderr, errfmt+"\n", a...)
+	}
+	if addUsage {
+		usage()
+	}
+	if !*noPause {
+		fmt.Printf("Press Enter to exit")
+		bufio.NewReader(os.Stdin).ReadBytes('\n')
+	}
+	os.Exit(status)
+}
+
 func usage() {
-	fmt.Println("Usage:", path.Base(os.Args[0]), " [<path to latest itunes backup directory>]")
-	os.Exit(101)
+	fmt.Fprintln(os.Stderr, "Usage:", path.Base(os.Args[0]), " [flags] [<path to latest iTunes backup directory>]")
+	flag.PrintDefaults()
+}
+
+func init() {
+	flag.Usage = usage
 }
 
 func main() {
 	var backupDir, syncDir string
 	var err error
 
-	switch len(os.Args) {
-	case 1:
+	fmt.Println("PIN Finder", version)
+
+	flag.Parse()
+
+	args := flag.Args()
+	switch len(args) {
+	case 0:
 		syncDir, err = findSyncDir()
 		if err != nil {
 			fmt.Println(err.Error)
@@ -233,25 +278,24 @@ func main() {
 		}
 		backupDir, err = findLatestBackup(syncDir)
 		if err != nil {
-			fmt.Println(err.Error())
-			usage()
+			exit(101, true, err.Error())
 		}
-	case 2:
-		backupDir = os.Args[1]
+
+	case 1:
+		backupDir = args[0]
+
 	default:
-		usage()
+		exit(102, true, "Too many arguments")
 	}
 
 	if !isDir(backupDir) {
-		fmt.Println("Directory not found: ", backupDir)
-		usage()
+		exit(103, true, "Directory not found: %s", backupDir)
 	}
 
 	fmt.Println("Searching backup at", backupDir)
 	pl, err := findRestrictions(backupDir)
 	if err != nil {
-		fmt.Println("Failed to find/load restrictions plist file: ", err)
-		os.Exit(102)
+		exit(104, false, "Failed to find/load restrictions plist file: ", err.Error())
 	}
 
 	key, salt := parseRestrictions(pl)
@@ -260,8 +304,12 @@ func main() {
 	startTime := time.Now()
 	pin, err := findPIN(key, salt)
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(103)
+		// Failed to break the PIN; dump the plist data for debugging purposes
+		fmt.Fprintln(os.Stderr, err.Error()+"\n")
+		fmt.Fprintln(os.Stderr, "Source data file: ", pl.Path)
+		pl.DumpTo(os.Stderr)
+		exit(105, false, "")
 	}
 	fmt.Printf(" FOUND!\nPIN number is: %s (found in %s)\n", pin, time.Since(startTime))
+	exit(0, false, "")
 }

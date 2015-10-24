@@ -62,7 +62,7 @@ func TestFindRestrictions(t *testing.T) {
 }
 
 func TestParseRestriction(t *testing.T) {
-	pl := &Plist{
+	pl := &plist{
 		Keys: []string{"RestrictionsPasswordKey", "RestrictionsPasswordSalt"},
 		Data: []string{"ioN63+yl6OFZ4/C7xl9VejMLDi0=", "iNciDA=="},
 	}
