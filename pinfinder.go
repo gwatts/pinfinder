@@ -54,7 +54,7 @@ import (
 
 const (
 	maxPIN  = 10000
-	version = "1.2.0"
+	version = "1.2.1"
 )
 
 var (
@@ -73,7 +73,7 @@ func isDir(p string) bool {
 func findSyncDir() (string, error) {
 	usr, err := user.Current()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to get information about current user: %s", err)
 	}
 	var dir string
 	switch runtime.GOOS {
@@ -87,10 +87,10 @@ func findSyncDir() (string, error) {
 			dir = filepath.Join("Documents and Settings", usr.Username, "Application Data", "Apple Computer", "MobileSync", "Backup")
 		}
 	default:
-		return "", errors.New("Could not detect backup directory for this operating system; pass explicitly")
+		return "", errors.New("could not detect backup directory for this operating system; pass explicitly")
 	}
 	if !isDir(dir) {
-		return "", fmt.Errorf("Directory %s does not exist", dir)
+		return "", fmt.Errorf("directory %s does not exist", dir)
 	}
 	return dir, nil
 }
@@ -99,11 +99,11 @@ func findSyncDir() (string, error) {
 func findLatestBackup(backupDir string) (string, error) {
 	d, err := os.Open(backupDir)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to open directory %q: %s", backupDir, err)
 	}
 	files, err := d.Readdir(10000)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to read directory %q: %s", backupDir, err)
 	}
 	var newest string
 	var lastMT time.Time
@@ -117,7 +117,7 @@ func findLatestBackup(backupDir string) (string, error) {
 	if newest != "" {
 		return filepath.Join(backupDir, newest), nil
 	}
-	return "", errors.New("No backup directories found in " + backupDir)
+	return "", errors.New("no backup directories found in " + backupDir)
 }
 
 type plist struct {
@@ -129,7 +129,7 @@ type plist struct {
 func (p *plist) DumpTo(w io.Writer) error {
 	f, err := os.Open(p.Path)
 	if err != nil {
-		return fmt.Errorf("Failed to dump plist data: %s", err)
+		return fmt.Errorf("failed to dump plist data: %s", err)
 	}
 	defer f.Close()
 	io.Copy(w, f)
@@ -153,12 +153,12 @@ func loadPlist(fn string) (*plist, error) {
 func findRestrictions(fpath string) (*plist, error) {
 	d, err := os.Open(fpath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open directory %q: %s", fpath, err)
 	}
 	defer d.Close()
 	fl, err := d.Readdir(-1)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read directory %q: %s", fpath, err)
 	}
 	c := 0
 	for _, fi := range fl {
@@ -176,9 +176,10 @@ func findRestrictions(fpath string) (*plist, error) {
 		}
 	}
 	if c == 0 {
-		return nil, errors.New("No plist files; are you sure you have the right directory?")
+		return nil, errors.New("no plist files; are you sure you have the right backup directory?")
 	}
-	return nil, errors.New("No matching plist file - Are parental restrictions turned on?")
+	return nil, errors.New("could not find parental restricitons plist file - " +
+		"Are you sure parental restrictions were turned on when this backup was taken?")
 }
 
 func parseRestrictions(pl *plist) (pw, salt []byte) {
@@ -295,7 +296,7 @@ func main() {
 	fmt.Println("Searching backup at", backupDir)
 	pl, err := findRestrictions(backupDir)
 	if err != nil {
-		exit(104, false, "Failed to find/load restrictions plist file: ", err.Error())
+		exit(104, false, err.Error())
 	}
 
 	key, salt := parseRestrictions(pl)
