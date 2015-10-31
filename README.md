@@ -60,7 +60,7 @@ Download, extract and run the binary.
 
 ```
 $ ./pinfinder
-Searching backup at /Users/johndoe/Library/Application Support/MobileSync/Backup/9afaaa65041cb570cd393b710f392c8220f2f20e
+Searching backup at /Users/johndoe/Library/Application\ Support/MobileSync/Backup/9afaaa65041cb570cd393b710f392c8220f2f20e
 Finding PIN... FOUND!
 PIN number is: 1234 (found in 761.7ms)
 ```
@@ -74,7 +74,7 @@ On Mac it will be in the home directory as /Library/Application Support/MobileSy
 eg.
 
 ```
-/Users/johndoe/Library/Application Support/MobileSync/Backup/51957b68226dbc9f59cb5797532afd906ba0a1f8
+/Users/johndoe/Library/Application\ Support/MobileSync/Backup/51957b68226dbc9f59cb5797532afd906ba0a1f8
 ```
 
 On Windows Vista or later it will be something like:
@@ -83,10 +83,10 @@ On Windows Vista or later it will be something like:
 \Users\John Doe\AppData\Roaming\Apple Computer\MobileSync\Backup
 ```
 
-Use whatever directory is the latest as the argument to pindecoder:
+Use whatever directory is the latest as the argument to pinfinder:
 
 ```
-$ pindecoder /Users/johndoe//Library/Application Support/MobileSync/Backup/51957b68226dbc9f59cb5797532afd906ba0a1f8
+$ pinfinder /Users/johndoe/Library/Application\ Support/MobileSync/Backup/51957b68226dbc9f59cb5797532afd906ba0a1f8
 ```
 
 The program will find the plist containing the hashed version of the PIN and will then find
@@ -105,7 +105,7 @@ If you don't want to use one of the [pre-compiled binaries](https://github.com/g
 you can compile it yourself.
 
 1. [Download and install Go](https://golang.org/doc/install)
-2. run go install github.com/gwatts/pindecode
+2. run go install github.com/gwatts/pinfinder
 
 ## Other resources
 
