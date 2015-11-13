@@ -83,8 +83,8 @@ func findSyncDir() (string, error) {
 		// vista & newer
 		dir = filepath.Join(usr.HomeDir, "AppData", "Roaming", "Apple Computer", "MobileSync", "Backup")
 		if !isDir(dir) {
-			// XP; untested.
-			dir = filepath.Join("Documents and Settings", usr.Username, "Application Data", "Apple Computer", "MobileSync", "Backup")
+			// XP; untested.  This should really query the registry to find the right documents directory.
+			dir = filepath.Join("C:\\Documents and Settings", usr.Username, "Application Data", "Apple Computer", "MobileSync", "Backup")
 		}
 	default:
 		return "", errors.New("could not detect backup directory for this operating system; pass explicitly")
