@@ -23,7 +23,7 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// iOS Restrictions PIN Finder
+// iOS Restrictions Passcode Finder
 //
 // This program will examine an iTunes backup folder for an iOS device and attempt
 // to find the PIN used for restricting permissions on the device (NOT the unlock PIN)
@@ -35,7 +35,6 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/base64"
-	"encoding/xml"
 	"errors"
 	"flag"
 	"fmt"
@@ -45,6 +44,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -53,13 +53,19 @@ import (
 )
 
 const (
-	maxPIN  = 10000
-	version = "1.2.1"
+	maxPIN                = 10000
+	version               = "1.3.0"
+	restrictionsPlistName = "398bc9c2aeeab4cb0c12ada0f52eea12cf14f40b"
 )
 
 var (
 	noPause = flag.Bool("nopause", false, "Set to true to prevent the program pausing for input on completion")
 )
+
+type plist struct {
+	Dict plistDict `xml:"dict"`
+	path string
+}
 
 func isDir(p string) bool {
 	s, err := os.Stat(p)
@@ -67,6 +73,15 @@ func isDir(p string) bool {
 		return false
 	}
 	return s.IsDir()
+}
+
+func dumpFile(fn string) {
+	if f, err := os.Open(fn); err != nil {
+		fmt.Printf("Failed to open %s: %s\n", fn, err)
+	} else {
+		defer f.Close()
+		io.Copy(os.Stdout, f)
+	}
 }
 
 // figure out where iTunes keeps its backups on the current OS
@@ -95,96 +110,61 @@ func findSyncDir() (string, error) {
 	return dir, nil
 }
 
-// Fidn the latest backup folder
-func findLatestBackup(backupDir string) (string, error) {
-	d, err := os.Open(backupDir)
-	if err != nil {
-		return "", fmt.Errorf("failed to open directory %q: %s", backupDir, err)
-	}
-	files, err := d.Readdir(10000)
-	if err != nil {
-		return "", fmt.Errorf("failed to read directory %q: %s", backupDir, err)
-	}
-	var newest string
-	var lastMT time.Time
-
-	for _, fi := range files {
-		if mt := fi.ModTime(); mt.After(lastMT) {
-			lastMT = mt
-			newest = fi.Name()
-		}
-	}
-	if newest != "" {
-		return filepath.Join(backupDir, newest), nil
-	}
-	return "", errors.New("no backup directories found in " + backupDir)
+type backup struct {
+	path         string
+	info         plist
+	restrictions plist
 }
 
-type plist struct {
-	Path string
-	Keys []string `xml:"dict>key"`
-	Data []string `xml:"dict>data"`
-}
+type backups []*backup
 
-func (p *plist) DumpTo(w io.Writer) error {
-	f, err := os.Open(p.Path)
-	if err != nil {
-		return fmt.Errorf("failed to dump plist data: %s", err)
-	}
-	defer f.Close()
-	io.Copy(w, f)
-	return nil
+func (b backups) Len() int { return len(b) }
+func (b backups) Less(i, j int) bool {
+	di, dj := b[i].info.Dict["Last Backup Date"].Value, b[j].info.Dict["Last Backup Date"].Value
+	return di < dj
 }
+func (b backups) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
 
-func loadPlist(fn string) (*plist, error) {
-	var p plist
-	f, err := os.Open(fn)
+func loadBackups(syncDir string) (backups backups, err error) {
+	// loop over all directories and see whether they contain an Info.plist
+	d, err := os.Open(syncDir)
 	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	if err := xml.NewDecoder(f).Decode(&p); err != nil {
-		return nil, err
-	}
-	p.Path = fn
-	return &p, nil
-}
-
-func findRestrictions(fpath string) (*plist, error) {
-	d, err := os.Open(fpath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open directory %q: %s", fpath, err)
+		return nil, fmt.Errorf("failed to open directory %q: %s", syncDir, err)
 	}
 	defer d.Close()
 	fl, err := d.Readdir(-1)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read directory %q: %s", fpath, err)
+		return nil, fmt.Errorf("failed to read directory %q: %s", syncDir, err)
 	}
-	c := 0
 	for _, fi := range fl {
-		if !fi.Mode().IsRegular() {
+		if !fi.Mode().IsDir() {
 			continue
 		}
-		if size := fi.Size(); size < 300 || size > 500 {
-			continue
-		}
-		if pl, err := loadPlist(path.Join(fpath, fi.Name())); err == nil {
-			c++
-			if len(pl.Keys) == 2 && len(pl.Data) == 2 && pl.Keys[0] == "RestrictionsPasswordKey" {
-				return pl, nil
-			}
+		path := filepath.Join(syncDir, fi.Name())
+		if b, err := loadBackup(path); err == nil {
+			backups = append(backups, b)
 		}
 	}
-	if c == 0 {
-		return nil, errors.New("no plist files; are you sure you have the right backup directory?")
-	}
-	return nil, errors.New("could not find parental restricitons plist file - " +
-		"Are you sure parental restrictions were turned on when this backup was taken?")
+	sort.Sort(sort.Reverse(backups))
+	return backups, nil
 }
 
-func parseRestrictions(pl *plist) (pw, salt []byte) {
-	pw, _ = base64.StdEncoding.DecodeString(strings.TrimSpace(pl.Data[0]))
-	salt, _ = base64.StdEncoding.DecodeString(strings.TrimSpace(pl.Data[1]))
+func loadBackup(backupDir string) (*backup, error) {
+	var b backup
+	if err := loadXML(filepath.Join(backupDir, "Info.plist"), &b.info); err != nil {
+		return nil, fmt.Errorf("%s is not a backup directory", backupDir)
+	}
+	b.info.path = filepath.Join(backupDir, "Info.plist")
+	if err := loadXML(filepath.Join(backupDir, restrictionsPlistName), &b.restrictions); err == nil {
+		b.restrictions.path = filepath.Join(backupDir, restrictionsPlistName)
+	}
+	b.path = backupDir
+	return &b, nil
+}
+
+func (b *backup) parseRestrictions() (pw, salt []byte) {
+	pw, _ = base64.StdEncoding.DecodeString(strings.TrimSpace(b.restrictions.Dict["RestrictionsPasswordKey"].Value))
+	salt, _ = base64.StdEncoding.DecodeString(strings.TrimSpace(b.restrictions.Dict["RestrictionsPasswordSalt"].Value))
 	return pw, salt
 }
 
@@ -262,10 +242,12 @@ func init() {
 }
 
 func main() {
-	var backupDir, syncDir string
+	var syncDir string
 	var err error
+	var allBackups backups
 
 	fmt.Println("PIN Finder", version)
+	fmt.Println("http://github.com/gwatts/pinfinder")
 
 	flag.Parse()
 
@@ -277,40 +259,56 @@ func main() {
 			fmt.Println(err.Error)
 			usage()
 		}
-		backupDir, err = findLatestBackup(syncDir)
+		allBackups, err = loadBackups(syncDir)
 		if err != nil {
 			exit(101, true, err.Error())
 		}
 
 	case 1:
-		backupDir = args[0]
+		b, err := loadBackup(args[0])
+		if err != nil {
+			exit(101, true, err.Error())
+		}
+		allBackups = backups{b}
 
 	default:
 		exit(102, true, "Too many arguments")
 	}
 
-	if !isDir(backupDir) {
-		exit(103, true, "Directory not found: %s", backupDir)
+	fmt.Println()
+	fmt.Printf("%-40.40s  %-25s  %s\n", "IOS DEVICE", "BACKUP TIME", "RESTRICTIONS PASSCODE")
+	failed := make(backups, 0)
+	for _, b := range allBackups {
+		info := b.info.Dict
+		var backupTime string
+		if t, err := time.Parse(time.RFC3339, info["Last Backup Date"].Value); err != nil {
+			backupTime = info["Last Backup Date"].Value
+		} else {
+			backupTime = t.In(time.Local).Format("Jan _2, 2006 03:04 PM MST")
+		}
+		fmt.Printf("%-40.40s  %s  ", info["Display Name"].Value, backupTime)
+		if b.restrictions.Dict != nil {
+			key, salt := b.parseRestrictions()
+			pin, err := findPIN(key, salt)
+			if err != nil {
+				fmt.Println("Failed to find passcode")
+				failed = append(failed, b)
+			} else {
+				fmt.Println(pin)
+			}
+		} else {
+			fmt.Println("No passcode found")
+		}
 	}
 
-	fmt.Println("Searching backup at", backupDir)
-	pl, err := findRestrictions(backupDir)
-	if err != nil {
-		exit(104, false, err.Error())
+	fmt.Println()
+	for _, b := range failed {
+		fmt.Printf("Failed to find PIN for backup %s\nPlease file a bug report at https://github.com/gwatts/pinfinder/issues\n", b.path)
+		for _, key := range []string{"Product Name", "Product Type", "Product Version"} {
+			fmt.Printf("%-20s: %s\n", key, b.info.Dict[key].Value)
+		}
+		dumpFile(b.restrictions.path)
+		fmt.Println()
 	}
-
-	key, salt := parseRestrictions(pl)
-
-	fmt.Print("Finding PIN...")
-	startTime := time.Now()
-	pin, err := findPIN(key, salt)
-	if err != nil {
-		// Failed to break the PIN; dump the plist data for debugging purposes
-		fmt.Fprintln(os.Stderr, err.Error()+"\n")
-		fmt.Fprintln(os.Stderr, "Source data file: ", pl.Path)
-		pl.DumpTo(os.Stderr)
-		exit(105, false, "")
-	}
-	fmt.Printf(" FOUND!\nPIN number is: %s (found in %s)\n", pin, time.Since(startTime))
 	exit(0, false, "")
 }

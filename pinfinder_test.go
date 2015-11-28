@@ -32,41 +32,119 @@ var (
 	dataPIN  = "1234"
 )
 
+func mkInfo(tm, devname string) []byte {
+	return []byte(fmt.Sprintf(`<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"> 
+<dict>
+	<key>Last Backup Date</key>
+	<date>%s</date>
+	<key>Device Name</key>
+	<string>%s</string>
+</dict>
+</plist>
+`, tm, devname))
+}
+
 func setupDataDir() string {
 	tmp, err := ioutil.TempDir("", "pinfinder")
 	if err != nil {
 		panic("Could not create test directory: " + err.Error())
 	}
+	b1path := filepath.Join(tmp, "backup1")
+	b2path := filepath.Join(tmp, "backup2")
+	b3path := filepath.Join(tmp, "nobackup")
+	os.Mkdir(b1path, 0777)
+	os.Mkdir(b2path, 0777)
+
 	ioutil.WriteFile(
-		filepath.Join(tmp, "398bc9c2aeeab4cb0c12ada0f52eea12cf14f40b"),
+		filepath.Join(b1path, "398bc9c2aeeab4cb0c12ada0f52eea12cf14f40b"),
 		[]byte(pinData),
 		0644)
 	ioutil.WriteFile(
-		filepath.Join(tmp, "398bc9c2aeeab4cb0c12ada0f52eea12cf14f40c"),
+		filepath.Join(b1path, "398bc9c2aeeab4cb0c12ada0f52eea12cf14f40c"),
 		[]byte("not a plist"),
 		0644)
+	ioutil.WriteFile(
+		filepath.Join(b1path, "Info.plist"),
+		mkInfo("2014-11-25T21:39:29Z", "device one"),
+		0644)
+
+	// no passcode for b2
+	ioutil.WriteFile(
+		filepath.Join(b2path, "398bc9c2aeeab4cb0c12ada0f52eea12cf14f40c"),
+		[]byte("not a plist"),
+		0644)
+	ioutil.WriteFile(
+		filepath.Join(b2path, "Info.plist"),
+		mkInfo("2015-11-25T21:39:29Z", "device two"),
+		0644)
+
+	// b3 doesn't contain a backup at all
+	ioutil.WriteFile(
+		filepath.Join(b3path, "random file"),
+		[]byte("not a plist"),
+		0644)
+
 	return tmp
 }
 
-func TestFindRestrictions(t *testing.T) {
+func TestLoadBackup(t *testing.T) {
 	tmpDir := setupDataDir()
 	defer os.RemoveAll(tmpDir)
 
-	pl, err := findRestrictions(tmpDir)
+	path := filepath.Join(tmpDir, "backup1")
+	backup, err := loadBackup(path)
 	if err != nil {
-		t.Fatal("Unexpected error", err)
+		t.Fatal("loadBackup failed", err)
 	}
-	if pl.Keys[0] != "RestrictionsPasswordKey" {
-		t.Error("Incorrect plist")
+	if backup.path != path {
+		t.Errorf("Path incorrect expected=%q actual=%q", path, backup.path)
+	}
+
+	if backup.info.Dict["Device Name"].Value != "device one" {
+		t.Errorf("Incorrect device name: %v", backup.info.Dict)
+	}
+}
+
+func TestLoadBackups(t *testing.T) {
+	tmpDir := setupDataDir()
+	defer os.RemoveAll(tmpDir)
+
+	b, err := loadBackups(tmpDir)
+	if err != nil {
+		t.Fatal("loadBackups failed", err)
+	}
+	if len(b) != 2 {
+		t.Fatal("Incorrect backup count", len(b))
+	}
+	// Should of been sorted into reverse time order
+	if devname := b[0].info.Dict["Device Name"].Value; devname != "device two" {
+		t.Errorf("First entry is not device two, got %q", devname)
+	}
+	if devname := b[1].info.Dict["Device Name"].Value; devname != "device one" {
+		t.Errorf("Second entry is not device one, got %q", devname)
 	}
 }
 
 func TestParseRestriction(t *testing.T) {
-	pl := &plist{
-		Keys: []string{"RestrictionsPasswordKey", "RestrictionsPasswordSalt"},
-		Data: []string{"ioN63+yl6OFZ4/C7xl9VejMLDi0=", "iNciDA=="},
+	tmpDir := setupDataDir()
+	defer os.RemoveAll(tmpDir)
+
+	path := filepath.Join(tmpDir, "backup1")
+	b, err := loadBackup(path)
+	if err != nil {
+		t.Fatal("Failed to load backup", err)
 	}
-	key, salt := parseRestrictions(pl)
+
+	key, salt := b.parseRestrictions()
+
+	/*
+		pl := &plist{
+			Keys: []string{"RestrictionsPasswordKey", "RestrictionsPasswordSalt"},
+			Data: []string{"ioN63+yl6OFZ4/C7xl9VejMLDi0=", "iNciDA=="},
+		}
+		key, salt := parseRestrictions(pl)
+	*/
 	if !bytes.Equal(key, dataKey) {
 		t.Error("key doesn't match")
 	}

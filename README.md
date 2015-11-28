@@ -1,11 +1,11 @@
-# Restrictions Pin Finder
+# iOS Restrictions Pin Finder
 
 [![Build Status](https://travis-ci.org/gwatts/pinfinder.svg?branch=master)](https://travis-ci.org/gwatts/pinfinder)
 
 pinfinder is a small application which attempts to to find the restrictions PIN/passcode
 for an iOS device by brute force examination of its iTunes backup.
 
-It was written after the PIN was forgotten for a kid's device and wiping it 
+It was written after the PIN was forgotten for a kid's iPod Touch and wiping it 
 would of been more work than writing this little program.
 
 **NOTE**: This program will **not** help you unlock a locked device - It can only help recover the restrictoins
@@ -22,6 +22,9 @@ Binaries for Linux, Mac and Windows can be found at the
 Operating-specifc instructions are below.  In most cases, simply running the program (working around
 OS specific security restrictions) should deliver the right result.  Take a look at the Troubleshooting
 section if you run into issues.
+
+By defalut, it will print out the passcode for all devices it can find an unencrypted backup for, dispalying
+the most recently backed up first.
 
 ### Windows
 
@@ -60,15 +63,23 @@ Download, extract and run the binary.
 
 ```
 $ ./pinfinder
-Searching backup at /Users/johndoe/Library/Application\ Support/MobileSync/Backup/9afaaa65041cb570cd393b710f392c8220f2f20e
-Finding PIN... FOUND!
-PIN number is: 1234 (found in 761.7ms)
+PIN Finder 1.3.0
+http://github.com/gwatts/pinfinder
+
+IOS DEVICE                                BACKUP TIME                RESTRICTIONS PASSCODE
+John Doe’s iPad Mini                      Nov 25, 2015 01:39 PM PST  1234
+John Doe's iPhone 6                       Nov 25, 2015 12:15 PM PST  3456
+John Doe's iPhone 5S                      Sep 19, 2014 03:57 PM PDT  No passcode found
 ```
+
 
 ## Troubleshooting
 
-If you have multiple devices or backups, you can pass the exact path to the backup folder to
-pinfinder, rather than have it try to find it by itself:
+By default the program will look for the restrictions passcode for every device that has been
+backed up, and return results of the most recently backed up first.
+
+You can also specify the backup directory explicitly on the command line to examine the backup 
+for a single device:
 
 On Mac it will be in the home directory as /Library/Application Support/MobileSync/Backup/<something>
 eg.
@@ -89,8 +100,8 @@ Use whatever directory is the latest as the argument to pinfinder:
 $ pinfinder /Users/johndoe/Library/Application\ Support/MobileSync/Backup/51957b68226dbc9f59cb5797532afd906ba0a1f8
 ```
 
-The program will find the plist containing the hashed version of the PIN and will then find
-the PIN that matches that hash (which can then be used with your device).
+The program will find the plist containing the hashed version of the passcode and will then find
+the passcode that matches that hash (which can then be used with your device).
 It shouldn't take more than a few seconds to run.
 
 If the program fails to find the passcode for your device, and you're sure it's searching the right
