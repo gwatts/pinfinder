@@ -54,7 +54,7 @@ import (
 
 const (
 	maxPIN                = 10000
-	version               = "1.3.0"
+	version               = "1.3.1"
 	restrictionsPlistName = "398bc9c2aeeab4cb0c12ada0f52eea12cf14f40b"
 )
 
@@ -95,12 +95,8 @@ func findSyncDir() (string, error) {
 	case "darwin":
 		dir = filepath.Join(usr.HomeDir, "Library", "Application Support", "MobileSync", "Backup")
 	case "windows":
-		// vista & newer
-		dir = filepath.Join(usr.HomeDir, "AppData", "Roaming", "Apple Computer", "MobileSync", "Backup")
-		if !isDir(dir) {
-			// XP; untested.  This should really query the registry to find the right documents directory.
-			dir = filepath.Join("C:\\Documents and Settings", usr.Username, "Application Data", "Apple Computer", "MobileSync", "Backup")
-		}
+		// this seesm to be correct for all versions of Windows.. Tested on XP and Windows 8
+		dir = filepath.Join(os.Getenv("APPDATA"), "Apple Computer", "MobileSync", "Backup")
 	default:
 		return "", errors.New("could not detect backup directory for this operating system; pass explicitly")
 	}
@@ -256,8 +252,7 @@ func main() {
 	case 0:
 		syncDir, err = findSyncDir()
 		if err != nil {
-			fmt.Println(err.Error)
-			usage()
+			exit(101, true, err.Error())
 		}
 		allBackups, err = loadBackups(syncDir)
 		if err != nil {
