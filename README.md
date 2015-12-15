@@ -2,8 +2,8 @@
 
 [![Build Status](https://travis-ci.org/gwatts/pinfinder.svg?branch=master)](https://travis-ci.org/gwatts/pinfinder)
 
-pinfinder is a small application which attempts to to find the restrictions PIN/passcode
-for an iOS device by brute force examination of its iTunes backup.
+pinfinder is a small application which attempts to to find the restrictions passcode
+for an iOS device (iPhone, iPad or iPod touch) by brute force examination of its iTunes backup, without needing to jailbreak the device.
 
 It was written after the PIN was forgotten for a kid's iPod Touch and wiping it 
 would of been more work than writing this little program.
@@ -23,7 +23,7 @@ Operating-specifc instructions are below.  In most cases, simply running the pro
 OS specific security restrictions) should deliver the right result.  Take a look at the Troubleshooting
 section if you run into issues.
 
-By defalut, it will print out the passcode for all devices it can find an unencrypted backup for, dispalying
+By default, it will print out the passcode for all devices it can find an unencrypted backup for, displaying
 the most recently backed up first.
 
 ### Windows
@@ -33,8 +33,15 @@ NOTE: The "encrypt backup" option must be disabled in iTunes.
 2. Download pinfinder from the [latest releases](https://github.com/gwatts/pinfinder/releases) page.
 3. Select "Open" when prompted by the web browser
 4. Drag `pinfinder` from the .zip file to the Desktop
-5. Right-click on the start button, and select `Command Prompt`
-6. Drag the `pinfinder` icon from the Desktop to the command prompt window, and press return to run it.
+
+#### For Windows XP/Vista ####
+
+Double click the pinfinder icon to run the program
+
+#### For Windows 7, 8 or 10 ####
+
+* Right-click on the start button, and select `Command Prompt`
+* Drag the `pinfinder` icon from the Desktop to the command prompt window, and press return to run it.
 
 ![Windows screen grab demo](docs/windows-demo.gif)
 
@@ -120,11 +127,11 @@ you can compile it yourself.
 
 ## Other resources
 
-Inspired by information found here:
+Inspired with thanks by information found here:
 
 https://nbalkota.wordpress.com/2014/04/05/recover-your-forgotten-ios-7-restrictions-pin-code/
 
 
 ## Other Notes
 
-Last tested with iOS 8 through 9.1 on OS X 10.10 and Windows 8 with iTunes 12.3
+Last tested with iOS 8 through 9.2 on OS X 10.10, 10.11, Windows XP and Windows 8 with iTunes 12.3
