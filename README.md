@@ -1,25 +1,31 @@
-# iOS Restrictions Pin Finder
+# iOS Restrictions Passcode Finder
 
 [![Build Status](https://travis-ci.org/gwatts/pinfinder.svg?branch=master)](https://travis-ci.org/gwatts/pinfinder)
 
-pinfinder is a small application which attempts to to find the restrictions passcode
-for an iOS device (iPhone, iPad or iPod touch) by brute force examination of its iTunes backup, without needing to jailbreak the device.
+Pinfinder is a small application for Mac, Windows and Linux which attempts to to find the restrictions passcode
+for an iOS device (iPhone, iPad or iPod Touch) by brute force examination of its iTunes backup, without needing to jailbreak the device.
 
 It was written after the PIN was forgotten for a kid's iPod Touch and wiping it 
 would of been more work than writing this little program.
 
-**NOTE**: This program will **not** help you unlock a locked device - It can only help recover the restrictoins
+**NOTE**: This program will **not** help you unlock a locked device - It can only help recover the restrictions
 passcode as found in `Settings -> General -> Restrictions`.  More information about Restrictions
 can be found [at Apple's web site](https://support.apple.com/en-us/HT201304).
+
+[This blog post]( https://nbalkota.wordpress.com/2014/04/05/recover-your-forgotten-ios-7-restrictions-pin-code/)
+(which I didn't write, but inspired this program) mentions pinfinder and contains comments from many people who have used
+pinfinder successfully.
+
+The program is free to download, use and redistribute (see the [license file](https://raw.githubusercontent.com/gwatts/pinfinder/master/LICENSE).
 
 ## Download
 
 Binaries for Linux, Mac and Windows can be found at the
 [latest releases](https://github.com/gwatts/pinfinder/releases) page.
 
-## Usage
+## Instructions
 
-Operating-specifc instructions are below.  In most cases, simply running the program (working around
+Operating-specific instructions are below.  In most cases, simply running the program (working around
 OS specific security restrictions) should deliver the right result.  Take a look at the Troubleshooting
 section if you run into issues.
 
@@ -29,14 +35,14 @@ the most recently backed up first.
 ### Windows
 
 1.  Backup the device using iTunes on a desktop computer.
-NOTE: The "encrypt backup" option must be disabled in iTunes.
+NOTE: The "encrypt backup" option *must be disabled* in iTunes.
 2. Download pinfinder from the [latest releases](https://github.com/gwatts/pinfinder/releases) page.
 3. Select "Open" when prompted by the web browser
 4. Drag `pinfinder` from the .zip file to the Desktop
 
 #### For Windows XP/Vista ####
 
-Double click the pinfinder icon to run the program
+Double click the pinfinder icon to run the program.
 
 #### For Windows 7, 8 or 10 ####
 
@@ -52,9 +58,9 @@ _[click here for full size version of above image](https://raw.githubusercontent
 
 
 1.  Backup the device using iTunes on a desktop computer.
-NOTE: The "encrypt backup" option must be disabled in iTunes.
+NOTE: The "encrypt backup" option *must be disabled* in iTunes.
 2. Download pinfinder from the [latest releases](https://github.com/gwatts/pinfinder/releases) page.
-3. Select the tar.gz file in the download list to open it
+3. Select the tar.gz file in the download list to open it.
 4. Right-click on pinfinder and select `Open With` -> `Terminal` - You will receive a warning about the program 
 being written by an unknown developer, which you'll need to accept to use it.
 
@@ -134,4 +140,4 @@ https://nbalkota.wordpress.com/2014/04/05/recover-your-forgotten-ios-7-restricti
 
 ## Other Notes
 
-Last tested with iOS 8 through 9.2 on OS X 10.10, 10.11, Windows XP and Windows 8 with iTunes 12.3
+Last tested with iOS 8 through 9.2.1 on OS X 10.10, 10.11, Windows XP and Windows 8 with iTunes 12.3
