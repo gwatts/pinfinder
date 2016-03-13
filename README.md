@@ -16,7 +16,7 @@ can be found [at Apple's web site](https://support.apple.com/en-us/HT201304).
 (which I didn't write, but inspired this program) mentions pinfinder and contains comments from many people who have used
 pinfinder successfully.
 
-The program is free to download, use and redistribute (see the [license file](https://raw.githubusercontent.com/gwatts/pinfinder/master/LICENSE).
+The program is free to download, use and redistribute (see the [license file](https://raw.githubusercontent.com/gwatts/pinfinder/master/LICENSE)).
 
 ## Download
 
