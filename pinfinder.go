@@ -1,4 +1,4 @@
-// Copyright (c) 2015, Gareth Watts
+// Copyright (c) 2016, Gareth Watts
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -34,7 +34,6 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/sha1"
-	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -45,27 +44,26 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
-	"strings"
 	"sync"
 	"time"
+
+	"github.com/DHowett/go-plist"
 
 	"golang.org/x/crypto/pbkdf2"
 )
 
 const (
 	maxPIN                = 10000
-	version               = "1.3.1"
+	version               = "1.4.0"
 	restrictionsPlistName = "398bc9c2aeeab4cb0c12ada0f52eea12cf14f40b"
+
+	msgIsEncrypted = "backup is encrypted"
+	msgNoPasscode  = "no passcode stored"
 )
 
 var (
 	noPause = flag.Bool("nopause", false, "Set to true to prevent the program pausing for input on completion")
 )
-
-type plist struct {
-	Dict plistDict `xml:"dict"`
-	path string
-}
 
 func isDir(p string) bool {
 	s, err := os.Stat(p)
@@ -86,17 +84,21 @@ func dumpFile(fn string) {
 
 // figure out where iTunes keeps its backups on the current OS
 func findSyncDir() (string, error) {
+
 	usr, err := user.Current()
 	if err != nil {
 		return "", fmt.Errorf("failed to get information about current user: %s", err)
 	}
+
 	var dir string
 	switch runtime.GOOS {
 	case "darwin":
 		dir = filepath.Join(usr.HomeDir, "Library", "Application Support", "MobileSync", "Backup")
+
 	case "windows":
 		// this seesm to be correct for all versions of Windows.. Tested on XP and Windows 8
 		dir = filepath.Join(os.Getenv("APPDATA"), "Apple Computer", "MobileSync", "Backup")
+
 	default:
 		return "", errors.New("could not detect backup directory for this operating system; pass explicitly")
 	}
@@ -106,18 +108,55 @@ func findSyncDir() (string, error) {
 	return dir, nil
 }
 
+func parsePlist(fn string, target interface{}) error {
+	f, err := os.Open(fn)
+	if err != nil {
+		return err
+	}
+
+	return plist.NewDecoder(f).Decode(target)
+}
+
 type backup struct {
-	path         string
-	info         plist
-	restrictions plist
+	path             string
+	status           string
+	restrictionsPath string
+	info             struct {
+		LastBackup     time.Time `plist:"Last Backup Date"`
+		DisplayName    string    `plist:"Display Name"`
+		ProductName    string    `plist:"Product Name"`
+		ProductType    string    `plist:"Product Type"`
+		ProductVersion string    `plist:"Product Version"`
+	}
+	manifest struct {
+		IsEncrypted interface{} `plist:"IsEncrypted"`
+	}
+	restrictions struct {
+		Key  []byte `plist:"RestrictionsPasswordKey"`
+		Salt []byte `plist:"RestrictionsPasswordSalt"`
+	}
+}
+
+func (b *backup) isEncrypted() bool {
+	switch v := b.manifest.IsEncrypted.(type) {
+	case int:
+		return v != 0
+	case uint64:
+		return v != 0
+	case bool:
+		return v
+	case nil:
+		return false
+	default:
+		return false
+	}
 }
 
 type backups []*backup
 
 func (b backups) Len() int { return len(b) }
 func (b backups) Less(i, j int) bool {
-	di, dj := b[i].info.Dict["Last Backup Date"].Value, b[j].info.Dict["Last Backup Date"].Value
-	return di < dj
+	return b[i].info.LastBackup.Before(b[j].info.LastBackup)
 }
 func (b backups) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
 
@@ -137,7 +176,7 @@ func loadBackups(syncDir string) (backups backups, err error) {
 			continue
 		}
 		path := filepath.Join(syncDir, fi.Name())
-		if b, err := loadBackup(path); err == nil {
+		if b := loadBackup(path); b != nil {
 			backups = append(backups, b)
 		}
 	}
@@ -145,23 +184,31 @@ func loadBackups(syncDir string) (backups backups, err error) {
 	return backups, nil
 }
 
-func loadBackup(backupDir string) (*backup, error) {
+func loadBackup(backupDir string) *backup {
 	var b backup
-	if err := loadXML(filepath.Join(backupDir, "Info.plist"), &b.info); err != nil {
-		return nil, fmt.Errorf("%s is not a backup directory", backupDir)
-	}
-	b.info.path = filepath.Join(backupDir, "Info.plist")
-	if err := loadXML(filepath.Join(backupDir, restrictionsPlistName), &b.restrictions); err == nil {
-		b.restrictions.path = filepath.Join(backupDir, restrictionsPlistName)
-	}
-	b.path = backupDir
-	return &b, nil
-}
+	b.restrictionsPath = filepath.Join(backupDir, restrictionsPlistName)
 
-func (b *backup) parseRestrictions() (pw, salt []byte) {
-	pw, _ = base64.StdEncoding.DecodeString(strings.TrimSpace(b.restrictions.Dict["RestrictionsPasswordKey"].Value))
-	salt, _ = base64.StdEncoding.DecodeString(strings.TrimSpace(b.restrictions.Dict["RestrictionsPasswordSalt"].Value))
-	return pw, salt
+	if err := parsePlist(filepath.Join(backupDir, "Info.plist"), &b.info); err != nil {
+		return nil // no Info.plist == invalid backup dir
+	}
+
+	if err := parsePlist(filepath.Join(backupDir, "Manifest.plist"), &b.manifest); err != nil {
+		return nil // no Manifest.plist == invaild backup dir
+	}
+
+	if err := parsePlist(b.restrictionsPath, &b.restrictions); os.IsNotExist(err) {
+		b.status = msgNoPasscode
+
+	} else if err != nil {
+		if b.isEncrypted() {
+			b.status = msgIsEncrypted
+		} else {
+			b.status = err.Error()
+		}
+	}
+
+	b.path = backupDir
+	return &b
 }
 
 type swg struct{ sync.WaitGroup }
@@ -258,11 +305,12 @@ func main() {
 		if err != nil {
 			exit(101, true, err.Error())
 		}
+		fmt.Println("Sync Directory:", syncDir)
 
 	case 1:
-		b, err := loadBackup(args[0])
-		if err != nil {
-			exit(101, true, err.Error())
+		b := loadBackup(args[0])
+		if b == nil {
+			exit(101, true, "Invalid backup directory")
 		}
 		allBackups = backups{b}
 
@@ -273,18 +321,16 @@ func main() {
 	fmt.Println()
 	fmt.Printf("%-40.40s  %-25s  %s\n", "IOS DEVICE", "BACKUP TIME", "RESTRICTIONS PASSCODE")
 	failed := make(backups, 0)
+
+	foundEncrypted := false
 	for _, b := range allBackups {
-		info := b.info.Dict
-		var backupTime string
-		if t, err := time.Parse(time.RFC3339, info["Last Backup Date"].Value); err != nil {
-			backupTime = info["Last Backup Date"].Value
-		} else {
-			backupTime = t.In(time.Local).Format("Jan _2, 2006 03:04 PM MST")
-		}
-		fmt.Printf("%-40.40s  %s  ", info["Display Name"].Value, backupTime)
-		if b.restrictions.Dict != nil {
-			key, salt := b.parseRestrictions()
-			pin, err := findPIN(key, salt)
+		info := b.info
+		fmt.Printf("%-40.40s  %s  ",
+			info.DisplayName,
+			info.LastBackup.In(time.Local).Format("Jan _2, 2006 03:04 PM MST"))
+
+		if len(b.restrictions.Key) > 0 {
+			pin, err := findPIN(b.restrictions.Key, b.restrictions.Salt)
 			if err != nil {
 				fmt.Println("Failed to find passcode")
 				failed = append(failed, b)
@@ -292,17 +338,28 @@ func main() {
 				fmt.Println(pin)
 			}
 		} else {
-			fmt.Println("No passcode found")
+			fmt.Println(b.status)
+			if b.status == msgIsEncrypted {
+				foundEncrypted = true
+			}
 		}
+	}
+
+	if foundEncrypted {
+		fmt.Println("")
+		fmt.Println("NOTE: Some backups had passcodes that are encrypted.")
+		fmt.Println("Select the device in iTunes, uncheck the \"Encrypt iPhone backup\" checkbox, ")
+		fmt.Println("re-sync and then run pinfinder again.")
 	}
 
 	fmt.Println()
 	for _, b := range failed {
 		fmt.Printf("Failed to find PIN for backup %s\nPlease file a bug report at https://github.com/gwatts/pinfinder/issues\n", b.path)
-		for _, key := range []string{"Product Name", "Product Type", "Product Version"} {
-			fmt.Printf("%-20s: %s\n", key, b.info.Dict[key].Value)
-		}
-		dumpFile(b.restrictions.path)
+		fmt.Printf("%-20s: %s\n", "Product Name", b.info.ProductName)
+		fmt.Printf("%-20s: %s\n", "Product Type", b.info.ProductType)
+		fmt.Printf("%-20s: %s\n", "Product Version", b.info.ProductVersion)
+
+		dumpFile(b.restrictionsPath)
 		fmt.Println()
 	}
 	exit(0, false, "")

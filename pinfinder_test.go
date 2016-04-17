@@ -38,11 +38,26 @@ func mkInfo(tm, devname string) []byte {
 <dict>
 	<key>Last Backup Date</key>
 	<date>%s</date>
-	<key>Device Name</key>
+	<key>Display Name</key>
 	<string>%s</string>
 </dict>
 </plist>
 `, tm, devname))
+}
+
+func mkManifest(isEncrypted bool) []byte {
+	b := "<false />"
+	if isEncrypted {
+		b = "<true />"
+	}
+	return []byte(fmt.Sprintf(`<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"> 
+<dict>
+	<key>IsEncrypted</key>
+	%s
+</dict>
+</plist>
+`, b))
 }
 
 func setupDataDir() string {
@@ -53,8 +68,13 @@ func setupDataDir() string {
 	b1path := filepath.Join(tmp, "backup1")
 	b2path := filepath.Join(tmp, "backup2")
 	b3path := filepath.Join(tmp, "nobackup")
+	b4path := filepath.Join(tmp, "encbackup")
+	b5path := filepath.Join(tmp, "encnopcbackup")
 	os.Mkdir(b1path, 0777)
 	os.Mkdir(b2path, 0777)
+	os.Mkdir(b3path, 0777)
+	os.Mkdir(b4path, 0777)
+	os.Mkdir(b5path, 0777)
 
 	ioutil.WriteFile(
 		filepath.Join(b1path, "398bc9c2aeeab4cb0c12ada0f52eea12cf14f40b"),
@@ -68,6 +88,10 @@ func setupDataDir() string {
 		filepath.Join(b1path, "Info.plist"),
 		mkInfo("2014-11-25T21:39:29Z", "device one"),
 		0644)
+	ioutil.WriteFile(
+		filepath.Join(b1path, "Manifest.plist"),
+		mkManifest(false),
+		0644)
 
 	// no passcode for b2
 	ioutil.WriteFile(
@@ -79,10 +103,39 @@ func setupDataDir() string {
 		mkInfo("2015-11-25T21:39:29Z", "device two"),
 		0644)
 
+	ioutil.WriteFile(
+		filepath.Join(b2path, "Manifest.plist"),
+		mkManifest(false),
+		0644)
+
 	// b3 doesn't contain a backup at all
 	ioutil.WriteFile(
 		filepath.Join(b3path, "random file"),
 		[]byte("not a plist"),
+		0644)
+
+	// b4 is marked as encrypted
+	ioutil.WriteFile(
+		filepath.Join(b4path, "398bc9c2aeeab4cb0c12ada0f52eea12cf14f40b"),
+		[]byte("this would be an encrypted plist"),
+		0644)
+	ioutil.WriteFile(
+		filepath.Join(b4path, "Info.plist"),
+		mkInfo("2014-11-24T20:39:29Z", "device three"),
+		0644)
+	ioutil.WriteFile(
+		filepath.Join(b4path, "Manifest.plist"),
+		mkManifest(true),
+		0644)
+
+	// b5 is encrypted, but has no passcode file
+	ioutil.WriteFile(
+		filepath.Join(b5path, "Info.plist"),
+		mkInfo("2014-11-24T19:39:29Z", "device four"),
+		0644)
+	ioutil.WriteFile(
+		filepath.Join(b5path, "Manifest.plist"),
+		mkManifest(true),
 		0644)
 
 	return tmp
@@ -93,16 +146,16 @@ func TestLoadBackup(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	path := filepath.Join(tmpDir, "backup1")
-	backup, err := loadBackup(path)
-	if err != nil {
-		t.Fatal("loadBackup failed", err)
+	backup := loadBackup(path)
+	if backup == nil {
+		t.Fatal("loadBackup failed")
 	}
 	if backup.path != path {
 		t.Errorf("Path incorrect expected=%q actual=%q", path, backup.path)
 	}
 
-	if backup.info.Dict["Device Name"].Value != "device one" {
-		t.Errorf("Incorrect device name: %v", backup.info.Dict)
+	if backup.info.DisplayName != "device one" {
+		t.Errorf("Incorrect device name: %v", backup.info)
 	}
 }
 
@@ -114,15 +167,29 @@ func TestLoadBackups(t *testing.T) {
 	if err != nil {
 		t.Fatal("loadBackups failed", err)
 	}
-	if len(b) != 2 {
+	if len(b) != 4 {
 		t.Fatal("Incorrect backup count", len(b))
 	}
 	// Should of been sorted into reverse time order
-	if devname := b[0].info.Dict["Device Name"].Value; devname != "device two" {
+	if devname := b[0].info.DisplayName; devname != "device two" {
 		t.Errorf("First entry is not device two, got %q", devname)
 	}
-	if devname := b[1].info.Dict["Device Name"].Value; devname != "device one" {
+	if devname := b[1].info.DisplayName; devname != "device one" {
 		t.Errorf("Second entry is not device one, got %q", devname)
+	}
+	if devname := b[2].info.DisplayName; devname != "device three" {
+		t.Errorf("Second entry is not device wthree, got %q", devname)
+	}
+	if !b[2].isEncrypted() {
+		t.Error("device three not marked as encrypted")
+	}
+
+	if status := b[2].status; status != msgIsEncrypted {
+		t.Error("device three does not have correct status: ", status)
+	}
+
+	if status := b[3].status; status != msgNoPasscode {
+		t.Error("device four does not have correct status", status)
 	}
 }
 
@@ -131,20 +198,14 @@ func TestParseRestriction(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	path := filepath.Join(tmpDir, "backup1")
-	b, err := loadBackup(path)
-	if err != nil {
-		t.Fatal("Failed to load backup", err)
+	b := loadBackup(path)
+	if b == nil {
+		t.Fatal("Failed to load backup")
 	}
 
-	key, salt := b.parseRestrictions()
+	key := b.restrictions.Key
+	salt := b.restrictions.Salt
 
-	/*
-		pl := &plist{
-			Keys: []string{"RestrictionsPasswordKey", "RestrictionsPasswordSalt"},
-			Data: []string{"ioN63+yl6OFZ4/C7xl9VejMLDi0=", "iNciDA=="},
-		}
-		key, salt := parseRestrictions(pl)
-	*/
 	if !bytes.Equal(key, dataKey) {
 		t.Error("key doesn't match")
 	}

@@ -32,6 +32,10 @@ section if you run into issues.
 By default, it will print out the passcode for all devices it can find an unencrypted backup for, displaying
 the most recently backed up first.
 
+**NOTE**: The "Encrypt local backup" option **must** be disabled in iTunes for your device so that pinfinder
+can read the file that contains the passcode.  You'll see a "backup is encrypted" message in pinfinder if it's on.
+
+
 ### Windows
 
 1.  Backup the device using iTunes on a desktop computer.
