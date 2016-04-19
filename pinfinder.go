@@ -28,6 +28,12 @@
 // This program will examine an iTunes backup folder for an iOS device and attempt
 // to find the PIN used for restricting permissions on the device (NOT the unlock PIN)
 
+// To regenerate licenses.go:
+// 1) go get github.com/gwatts/emebdfiles
+// 2) go generate
+
+//go:generate embedfiles -filename licenses.go -var licenses LICENSE*
+
 package main
 
 import (
@@ -62,7 +68,8 @@ const (
 )
 
 var (
-	noPause = flag.Bool("nopause", false, "Set to true to prevent the program pausing for input on completion")
+	noPause     = flag.Bool("nopause", false, "Set to true to prevent the program pausing for input on completion")
+	showLicense = flag.Bool("license", false, "Display license information")
 )
 
 func isDir(p string) bool {
@@ -284,6 +291,21 @@ func init() {
 	flag.Usage = usage
 }
 
+func displayLicense() {
+	fmt.Println("LICENSE INFORMATION")
+	fmt.Println("-------------------")
+	fmt.Println()
+	for _, fn := range licenses.Filenames() {
+		fmt.Println(fn)
+		fmt.Println()
+		f, _ := licenses.Open(fn)
+		io.Copy(os.Stdout, f)
+		fmt.Println()
+		fmt.Println()
+	}
+	fmt.Println()
+}
+
 func main() {
 	var syncDir string
 	var err error
@@ -293,6 +315,11 @@ func main() {
 	fmt.Println("http://github.com/gwatts/pinfinder")
 
 	flag.Parse()
+
+	if *showLicense {
+		displayLicense()
+		return
+	}
 
 	args := flag.Args()
 	switch len(args) {
