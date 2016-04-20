@@ -35,6 +35,8 @@ the most recently backed up first.
 **NOTE**: The "Encrypt local backup" option **must** be disabled in iTunes for your device so that pinfinder
 can read the file that contains the passcode.  You'll see a "backup is encrypted" message in pinfinder if it's on.
 
+![Disable Encrypt Backup](docs/iphone-backup-hint.png)
+
 
 ### Windows
 
