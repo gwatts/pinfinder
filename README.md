@@ -40,7 +40,7 @@ can read the file that contains the passcode.  You'll see a "backup is encrypted
 
 ### Windows
 
-1.  Backup the device using iTunes on a desktop computer.
+1.  Backup the device using [iTunes](https://www.apple.com/itunes/download/) on a desktop or laptop computer.
 NOTE: The "encrypt backup" option *must be disabled* in iTunes.
 2. Download pinfinder from the [latest releases](https://github.com/gwatts/pinfinder/releases) page.
 3. Select "Open" when prompted by the web browser
@@ -63,7 +63,7 @@ _[click here for full size version of above image](https://raw.githubusercontent
 ### Mac
 
 
-1.  Backup the device using iTunes on a desktop computer.
+1.  Backup the device using iTunes on a desktop or laptop computer.
 NOTE: The "encrypt backup" option *must be disabled* in iTunes.
 2. Download pinfinder from the [latest releases](https://github.com/gwatts/pinfinder/releases) page.
 3. Select the tar.gz file in the download list to open it.
