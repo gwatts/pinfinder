@@ -146,4 +146,4 @@ https://nbalkota.wordpress.com/2014/04/05/recover-your-forgotten-ios-7-restricti
 
 ## Other Notes
 
-Last tested with iOS 8 through 9.3 on OS X 10.10, 10.11, Windows XP and Windows 8 with iTunes 12.3
+Last tested with iOS 8 through 10.0.2 on OS X 10.10, 10.11, Windows XP and Windows 8 with iTunes 12.5

@@ -70,11 +70,14 @@ func setupDataDir() string {
 	b3path := filepath.Join(tmp, "nobackup")
 	b4path := filepath.Join(tmp, "encbackup")
 	b5path := filepath.Join(tmp, "encnopcbackup")
+	b6path := filepath.Join(tmp, "ios10backup")
 	os.Mkdir(b1path, 0777)
 	os.Mkdir(b2path, 0777)
 	os.Mkdir(b3path, 0777)
 	os.Mkdir(b4path, 0777)
 	os.Mkdir(b5path, 0777)
+	os.Mkdir(b6path, 0777)
+	os.Mkdir(filepath.Join(b6path, "39"), 0777)
 
 	ioutil.WriteFile(
 		filepath.Join(b1path, "398bc9c2aeeab4cb0c12ada0f52eea12cf14f40b"),
@@ -138,6 +141,20 @@ func setupDataDir() string {
 		mkManifest(true),
 		0644)
 
+	// b6 contains a passcode with iOS 10 file layout
+	ioutil.WriteFile(
+		filepath.Join(b6path, "39", "398bc9c2aeeab4cb0c12ada0f52eea12cf14f40b"),
+		[]byte(pinData),
+		0644)
+	ioutil.WriteFile(
+		filepath.Join(b6path, "Info.plist"),
+		mkInfo("2016-09-23T21:39:29Z", "ios10 device"),
+		0644)
+	ioutil.WriteFile(
+		filepath.Join(b6path, "Manifest.plist"),
+		mkManifest(false),
+		0644)
+
 	return tmp
 }
 
@@ -167,28 +184,32 @@ func TestLoadBackups(t *testing.T) {
 	if err != nil {
 		t.Fatal("loadBackups failed", err)
 	}
-	if len(b) != 4 {
+	if len(b) != 5 {
 		t.Fatal("Incorrect backup count", len(b))
 	}
+
 	// Should of been sorted into reverse time order
-	if devname := b[0].info.DisplayName; devname != "device two" {
-		t.Errorf("First entry is not device two, got %q", devname)
+	if devname := b[0].info.DisplayName; devname != "ios10 device" {
+		t.Errorf("First entry is not ios10 device got %q", devname)
 	}
-	if devname := b[1].info.DisplayName; devname != "device one" {
-		t.Errorf("Second entry is not device one, got %q", devname)
+	if devname := b[1].info.DisplayName; devname != "device two" {
+		t.Errorf("Second entry is not device two, got %q", devname)
 	}
-	if devname := b[2].info.DisplayName; devname != "device three" {
-		t.Errorf("Second entry is not device wthree, got %q", devname)
+	if devname := b[2].info.DisplayName; devname != "device one" {
+		t.Errorf("Third entry is not device one, got %q", devname)
 	}
-	if !b[2].isEncrypted() {
+	if devname := b[3].info.DisplayName; devname != "device three" {
+		t.Errorf("Fourth entry is not device wthree, got %q", devname)
+	}
+	if !b[3].isEncrypted() {
 		t.Error("device three not marked as encrypted")
 	}
 
-	if status := b[2].status; status != msgIsEncrypted {
+	if status := b[3].status; status != msgIsEncrypted {
 		t.Error("device three does not have correct status: ", status)
 	}
 
-	if status := b[3].status; status != msgNoPasscode {
+	if status := b[4].status; status != msgNoPasscode {
 		t.Error("device four does not have correct status", status)
 	}
 }
@@ -197,22 +218,24 @@ func TestParseRestriction(t *testing.T) {
 	tmpDir := setupDataDir()
 	defer os.RemoveAll(tmpDir)
 
-	path := filepath.Join(tmpDir, "backup1")
-	b := loadBackup(path)
-	if b == nil {
-		t.Fatal("Failed to load backup")
-	}
+	for _, base := range []string{"backup1", "ios10backup"} {
+		path := filepath.Join(tmpDir, base)
+		b := loadBackup(path)
+		if b == nil {
+			t.Fatal("Failed to load backup")
+		}
 
-	key := b.restrictions.Key
-	salt := b.restrictions.Salt
+		key := b.restrictions.Key
+		salt := b.restrictions.Salt
 
-	if !bytes.Equal(key, dataKey) {
-		t.Error("key doesn't match")
+		if !bytes.Equal(key, dataKey) {
+			t.Error("key doesn't match")
+		}
+		if !bytes.Equal(salt, dataSalt) {
+			t.Error("salt doesn't match")
+		}
+		fmt.Printf("key: %#v\nsalt: %#v\n", key, salt)
 	}
-	if !bytes.Equal(salt, dataSalt) {
-		t.Error("salt doesn't match")
-	}
-	fmt.Printf("key: %#v\nsalt: %#v\n", key, salt)
 }
 
 func TestFindPINOK(t *testing.T) {

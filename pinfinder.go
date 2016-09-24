@@ -60,7 +60,7 @@ import (
 
 const (
 	maxPIN                = 10000
-	version               = "1.4.0"
+	version               = "1.5.0"
 	restrictionsPlistName = "398bc9c2aeeab4cb0c12ada0f52eea12cf14f40b"
 
 	msgIsEncrypted = "backup is encrypted"
@@ -193,7 +193,6 @@ func loadBackups(syncDir string) (backups backups, err error) {
 
 func loadBackup(backupDir string) *backup {
 	var b backup
-	b.restrictionsPath = filepath.Join(backupDir, restrictionsPlistName)
 
 	if err := parsePlist(filepath.Join(backupDir, "Info.plist"), &b.info); err != nil {
 		return nil // no Info.plist == invalid backup dir
@@ -201,6 +200,13 @@ func loadBackup(backupDir string) *backup {
 
 	if err := parsePlist(filepath.Join(backupDir, "Manifest.plist"), &b.manifest); err != nil {
 		return nil // no Manifest.plist == invaild backup dir
+	}
+
+	b.restrictionsPath = filepath.Join(backupDir, restrictionsPlistName)
+	if _, err := os.Stat(b.restrictionsPath); err != nil {
+		// iOS 10 moved backup files into sub-folders beginning with
+		// the first 2 letters of the filename.
+		b.restrictionsPath = filepath.Join(backupDir, restrictionsPlistName[:2], restrictionsPlistName)
 	}
 
 	if err := parsePlist(b.restrictionsPath, &b.restrictions); os.IsNotExist(err) {
