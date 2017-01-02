@@ -167,12 +167,12 @@ func TestLoadBackup(t *testing.T) {
 	if backup == nil {
 		t.Fatal("loadBackup failed")
 	}
-	if backup.path != path {
-		t.Errorf("Path incorrect expected=%q actual=%q", path, backup.path)
+	if backup.Path != path {
+		t.Errorf("Path incorrect expected=%q actual=%q", path, backup.Path)
 	}
 
-	if backup.info.DisplayName != "device one" {
-		t.Errorf("Incorrect device name: %v", backup.info)
+	if backup.Info.DisplayName != "device one" {
+		t.Errorf("Incorrect device name: %v", backup.Info)
 	}
 }
 
@@ -189,27 +189,27 @@ func TestLoadBackups(t *testing.T) {
 	}
 
 	// Should of been sorted into reverse time order
-	if devname := b[0].info.DisplayName; devname != "ios10 device" {
+	if devname := b[0].Info.DisplayName; devname != "ios10 device" {
 		t.Errorf("First entry is not ios10 device got %q", devname)
 	}
-	if devname := b[1].info.DisplayName; devname != "device two" {
+	if devname := b[1].Info.DisplayName; devname != "device two" {
 		t.Errorf("Second entry is not device two, got %q", devname)
 	}
-	if devname := b[2].info.DisplayName; devname != "device one" {
+	if devname := b[2].Info.DisplayName; devname != "device one" {
 		t.Errorf("Third entry is not device one, got %q", devname)
 	}
-	if devname := b[3].info.DisplayName; devname != "device three" {
+	if devname := b[3].Info.DisplayName; devname != "device three" {
 		t.Errorf("Fourth entry is not device wthree, got %q", devname)
 	}
 	if !b[3].isEncrypted() {
 		t.Error("device three not marked as encrypted")
 	}
 
-	if status := b[3].status; status != msgIsEncrypted {
+	if status := b[3].Status; status != msgIsEncrypted {
 		t.Error("device three does not have correct status: ", status)
 	}
 
-	if status := b[4].status; status != msgNoPasscode {
+	if status := b[4].Status; status != msgNoPasscode {
 		t.Error("device four does not have correct status", status)
 	}
 }
@@ -225,8 +225,8 @@ func TestParseRestriction(t *testing.T) {
 			t.Fatal("Failed to load backup")
 		}
 
-		key := b.restrictions.Key
-		salt := b.restrictions.Salt
+		key := b.Restrictions.Key
+		salt := b.Restrictions.Salt
 
 		if !bytes.Equal(key, dataKey) {
 			t.Error("key doesn't match")
