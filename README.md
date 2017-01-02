@@ -134,8 +134,20 @@ the text the program prints in the issue so I can help.
 If you don't want to use one of the [pre-compiled binaries](https://github.com/gwatts/pinfinder/releases)
 you can compile it yourself.
 
-1. [Download and install Go](https://golang.org/doc/install)
-2. run go install github.com/gwatts/pinfinder
+1. [Download and install Go](https://golang.org/doc/install) - Be sure to follow the instructions to [setup a workspace](https://golang.org/doc/code.html#Workspaces) and set a `GOPATH` environment variable to suit
+2. run `go get github.com/gwatts/pinfinder`
+
+If you just want to compile the program as quick as possible, install Go from the web site above, and run the following steps to build and install it to `~/pinfinder/bin/pinfinder`
+
+```bash
+cd ~
+mkdir ~/pinfinder
+cd pinfinder
+mkdir src bin pkg
+export GOPATH=~/pinfinder
+go get github.com/gwatts/pinfinder
+bin/pinfinder
+```
 
 ## Other resources
 
