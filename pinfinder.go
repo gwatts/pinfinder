@@ -43,6 +43,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"html/template"
 	"io"
 	"os"
 	"os/user"
@@ -60,7 +61,7 @@ import (
 
 const (
 	maxPIN                = 10000
-	version               = "1.5.0"
+	version               = "1.5.1.dev1"
 	restrictionsPlistName = "398bc9c2aeeab4cb0c12ada0f52eea12cf14f40b"
 
 	msgIsEncrypted = "backup is encrypted"
@@ -70,6 +71,7 @@ const (
 var (
 	noPause     = flag.Bool("nopause", false, "Set to true to prevent the program pausing for input on completion")
 	showLicense = flag.Bool("license", false, "Display license information")
+	diag        = flag.Bool("diag", false, "Generate a diagnostic pinfinder-debug.zip file")
 )
 
 func isDir(p string) bool {
@@ -124,28 +126,50 @@ func parsePlist(fn string, target interface{}) error {
 	return plist.NewDecoder(f).Decode(target)
 }
 
+var backupInfoTpl = template.Must(template.New("backup").Parse(`
+Path: {{.Path}}
+Status: {{.Status}}
+RestrictionPath: {{.RestrictionsPath}}
+IsEncrypted: {{.Manifest.IsEncrypted}}
+
+Key: {{.Restrictions.Key}}
+Salt: {{.Restrictions.Salt}}
+
+LastBackup: {{.Info.LastBackup}}
+DisplayName: {{.Info.DisplayName}}
+ProductName: {{.Info.ProductName}}
+ProductType: {{.Info.ProductType}}
+ProductVersion: {{.Info.ProductVersion}}
+`))
+
 type backup struct {
-	path             string
-	status           string
-	restrictionsPath string
-	info             struct {
+	Path             string
+	Status           string
+	RestrictionsPath string
+	Info             struct {
 		LastBackup     time.Time `plist:"Last Backup Date"`
 		DisplayName    string    `plist:"Display Name"`
 		ProductName    string    `plist:"Product Name"`
 		ProductType    string    `plist:"Product Type"`
 		ProductVersion string    `plist:"Product Version"`
 	}
-	manifest struct {
+	Manifest struct {
 		IsEncrypted interface{} `plist:"IsEncrypted"`
 	}
-	restrictions struct {
+	Restrictions struct {
 		Key  []byte `plist:"RestrictionsPasswordKey"`
 		Salt []byte `plist:"RestrictionsPasswordSalt"`
 	}
 }
 
+func (b *backup) debugInfo() string {
+	var buf bytes.Buffer
+	backupInfoTpl.Execute(&buf, b)
+	return buf.String()
+}
+
 func (b *backup) isEncrypted() bool {
-	switch v := b.manifest.IsEncrypted.(type) {
+	switch v := b.Manifest.IsEncrypted.(type) {
 	case int:
 		return v != 0
 	case uint64:
@@ -163,7 +187,7 @@ type backups []*backup
 
 func (b backups) Len() int { return len(b) }
 func (b backups) Less(i, j int) bool {
-	return b[i].info.LastBackup.Before(b[j].info.LastBackup)
+	return b[i].Info.LastBackup.Before(b[j].Info.LastBackup)
 }
 func (b backups) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
 
@@ -194,33 +218,33 @@ func loadBackups(syncDir string) (backups backups, err error) {
 func loadBackup(backupDir string) *backup {
 	var b backup
 
-	if err := parsePlist(filepath.Join(backupDir, "Info.plist"), &b.info); err != nil {
+	if err := parsePlist(filepath.Join(backupDir, "Info.plist"), &b.Info); err != nil {
 		return nil // no Info.plist == invalid backup dir
 	}
 
-	if err := parsePlist(filepath.Join(backupDir, "Manifest.plist"), &b.manifest); err != nil {
+	if err := parsePlist(filepath.Join(backupDir, "Manifest.plist"), &b.Manifest); err != nil {
 		return nil // no Manifest.plist == invaild backup dir
 	}
 
-	b.restrictionsPath = filepath.Join(backupDir, restrictionsPlistName)
-	if _, err := os.Stat(b.restrictionsPath); err != nil {
+	b.RestrictionsPath = filepath.Join(backupDir, restrictionsPlistName)
+	if _, err := os.Stat(b.RestrictionsPath); err != nil {
 		// iOS 10 moved backup files into sub-folders beginning with
 		// the first 2 letters of the filename.
-		b.restrictionsPath = filepath.Join(backupDir, restrictionsPlistName[:2], restrictionsPlistName)
+		b.RestrictionsPath = filepath.Join(backupDir, restrictionsPlistName[:2], restrictionsPlistName)
 	}
 
-	if err := parsePlist(b.restrictionsPath, &b.restrictions); os.IsNotExist(err) {
-		b.status = msgNoPasscode
+	if err := parsePlist(b.RestrictionsPath, &b.Restrictions); os.IsNotExist(err) {
+		b.Status = msgNoPasscode
 
 	} else if err != nil {
 		if b.isEncrypted() {
-			b.status = msgIsEncrypted
+			b.Status = msgIsEncrypted
 		} else {
-			b.status = err.Error()
+			b.Status = err.Error()
 		}
 	}
 
-	b.path = backupDir
+	b.Path = backupDir
 	return &b
 }
 
@@ -312,6 +336,58 @@ func displayLicense() {
 	fmt.Println()
 }
 
+func generateReport(f io.Writer, includeDirName bool, allBackups backups) {
+	if includeDirName {
+		fmt.Fprintf(f, "%-70s", "BACKUP DIR")
+	}
+	fmt.Fprintf(f, "%-40.40s  %-25s  %s\n", "IOS DEVICE", "BACKUP TIME", "RESTRICTIONS PASSCODE")
+	failed := make(backups, 0)
+
+	foundEncrypted := false
+	for _, b := range allBackups {
+		info := b.Info
+		if includeDirName {
+			fmt.Fprintf(f, "%-70s", filepath.Base(b.Path))
+		}
+		fmt.Fprintf(f, "%-40.40s  %s  ",
+			info.DisplayName,
+			info.LastBackup.In(time.Local).Format("Jan _2, 2006 03:04 PM MST"))
+
+		if len(b.Restrictions.Key) > 0 {
+			pin, err := findPIN(b.Restrictions.Key, b.Restrictions.Salt)
+			if err != nil {
+				fmt.Fprintln(f, "Failed to find passcode")
+				failed = append(failed, b)
+			} else {
+				fmt.Fprintln(f, pin)
+			}
+		} else {
+			fmt.Fprintln(f, b.Status)
+			if b.Status == msgIsEncrypted {
+				foundEncrypted = true
+			}
+		}
+	}
+
+	if foundEncrypted {
+		fmt.Fprintln(f, "")
+		fmt.Fprintln(f, "NOTE: Some backups had passcodes that are encrypted.")
+		fmt.Fprintln(f, "Select the device in iTunes, uncheck the \"Encrypt iPhone backup\" checkbox, ")
+		fmt.Fprintln(f, "re-sync and then run pinfinder again.")
+	}
+
+	fmt.Fprintln(f)
+	for _, b := range failed {
+		fmt.Fprintf(f, "Failed to find PIN for backup %s\nPlease file a bug report at https://github.com/gwatts/pinfinder/issues\n", b.Path)
+		fmt.Fprintf(f, "%-20s: %s\n", "Product Name", b.Info.ProductName)
+		fmt.Fprintf(f, "%-20s: %s\n", "Product Type", b.Info.ProductType)
+		fmt.Fprintf(f, "%-20s: %s\n", "Product Version", b.Info.ProductVersion)
+
+		dumpFile(b.RestrictionsPath)
+		fmt.Fprintln(f, "")
+	}
+}
+
 func main() {
 	var syncDir string
 	var err error
@@ -352,48 +428,19 @@ func main() {
 	}
 
 	fmt.Println()
-	fmt.Printf("%-40.40s  %-25s  %s\n", "IOS DEVICE", "BACKUP TIME", "RESTRICTIONS PASSCODE")
-	failed := make(backups, 0)
 
-	foundEncrypted := false
-	for _, b := range allBackups {
-		info := b.info
-		fmt.Printf("%-40.40s  %s  ",
-			info.DisplayName,
-			info.LastBackup.In(time.Local).Format("Jan _2, 2006 03:04 PM MST"))
-
-		if len(b.restrictions.Key) > 0 {
-			pin, err := findPIN(b.restrictions.Key, b.restrictions.Salt)
-			if err != nil {
-				fmt.Println("Failed to find passcode")
-				failed = append(failed, b)
-			} else {
-				fmt.Println(pin)
-			}
+	if *diag {
+		var buf bytes.Buffer
+		fmt.Println("Generating backup diagnostic report; may take a couple of minutes..")
+		generateReport(&buf, true, allBackups)
+		if fn, err := buildDebug("", buf.String(), allBackups); err != nil {
+			exit(110, false, err.Error())
 		} else {
-			fmt.Println(b.status)
-			if b.status == msgIsEncrypted {
-				foundEncrypted = true
-			}
+			fmt.Println("Generated diagnostic report file stored at", fn)
+			exit(0, false, "")
 		}
 	}
 
-	if foundEncrypted {
-		fmt.Println("")
-		fmt.Println("NOTE: Some backups had passcodes that are encrypted.")
-		fmt.Println("Select the device in iTunes, uncheck the \"Encrypt iPhone backup\" checkbox, ")
-		fmt.Println("re-sync and then run pinfinder again.")
-	}
-
-	fmt.Println()
-	for _, b := range failed {
-		fmt.Printf("Failed to find PIN for backup %s\nPlease file a bug report at https://github.com/gwatts/pinfinder/issues\n", b.path)
-		fmt.Printf("%-20s: %s\n", "Product Name", b.info.ProductName)
-		fmt.Printf("%-20s: %s\n", "Product Type", b.info.ProductType)
-		fmt.Printf("%-20s: %s\n", "Product Version", b.info.ProductVersion)
-
-		dumpFile(b.restrictionsPath)
-		fmt.Println()
-	}
+	generateReport(os.Stdout, false, allBackups)
 	exit(0, false, "")
 }
