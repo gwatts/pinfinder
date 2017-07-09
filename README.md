@@ -18,6 +18,17 @@ pinfinder successfully.
 
 The program is free to download, use and redistribute (see the [license file](https://raw.githubusercontent.com/gwatts/pinfinder/master/LICENSE)).
 
+Need help in another language?  Some other blogs have covered using pinfinder:
+
+* [ibobr.ru - Russian](http://ibobr.ru/manual/iphone-parol-ogranichenij.html)
+* [apple-iphone.ru - Russian](https://www.apple-iphone.ru/iphone-ipad-guides/Zabyl-parol-ogranicheniy-iphone-chto-dela/)
+* [iGeneration - French](http://www.igen.fr/ios/2017/05/pinfinder-retrouve-le-code-de-restriction-des-appareils-ios-99639)
+* [OS X Daily - English](http://osxdaily.com/2016/12/28/reset-restrictions-password-ios/)
+* [rajrathore.com - English](http://www.rajrathore.com/recover-restrictions-password-for-ios/)
+
+[Create a new issue](https://github.com/gwatts/pinfinder/issues/new) to let me know if you find a site with instructions that should be listed above!
+
+
 ## Download
 
 Binaries for Linux, Mac and Windows can be found at the
@@ -158,4 +169,4 @@ https://nbalkota.wordpress.com/2014/04/05/recover-your-forgotten-ios-7-restricti
 
 ## Other Notes
 
-Last tested with iOS 8 through 10.0.2 on OS X 10.10, 10.11, Windows XP and Windows 8 with iTunes 12.5
+Last tested with iOS 8 through 10.3.2 on OS X 10.10, 10.11, 10.12 Windows XP and Windows 8 with iTunes 12.5
