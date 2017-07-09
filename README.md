@@ -25,6 +25,7 @@ Need help in another language?  Some other blogs have covered using pinfinder:
 * [iGeneration - French](http://www.igen.fr/ios/2017/05/pinfinder-retrouve-le-code-de-restriction-des-appareils-ios-99639)
 * [OS X Daily - English](http://osxdaily.com/2016/12/28/reset-restrictions-password-ios/)
 * [rajrathore.com - English](http://www.rajrathore.com/recover-restrictions-password-for-ios/)
+* [UltimateTech.org - English](https://www.ultimatetech.org/hack-restrictions-passcode-ios-pinfinder-2/)
 
 [Create a new issue](https://github.com/gwatts/pinfinder/issues/new) to let me know if you find a site with instructions that should be listed above!
 
