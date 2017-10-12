@@ -74,6 +74,7 @@ _[click here for full size version of above image](https://raw.githubusercontent
 
 ### Mac
 
+**NOTE** pinfinder 1.5 does not currently work with OS X 11.13 "High Sierra" - An update will be released in the next week.
 
 1.  Backup the device using iTunes on a desktop or laptop computer.
 NOTE: The "encrypt backup" option *must be disabled* in iTunes.
