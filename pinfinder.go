@@ -61,7 +61,7 @@ import (
 
 const (
 	maxPIN                = 10000
-	version               = "1.5.1.dev1"
+	version               = "1.5.1.dev2"
 	restrictionsPlistName = "398bc9c2aeeab4cb0c12ada0f52eea12cf14f40b"
 
 	msgIsEncrypted = "backup is encrypted"
@@ -432,7 +432,7 @@ func main() {
 	if *diag {
 		var buf bytes.Buffer
 		fmt.Println("Generating backup diagnostic report; may take a couple of minutes..")
-		generateReport(&buf, true, allBackups)
+		generateReport(io.MultiWriter(os.Stdout, &buf), true, allBackups)
 		if fn, err := buildDebug("", buf.String(), allBackups); err != nil {
 			exit(110, false, err.Error())
 		} else {

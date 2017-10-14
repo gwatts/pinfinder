@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"os/user"
 	"path"
@@ -118,8 +119,15 @@ func addStringToZip(zf *zip.Writer, filename, content string) error {
 	return err
 }
 
-// getDefaultDir returns the user's home directory, or the Windows Desktop directory.
+// getDefaultDir returns the directory the executable is in,
+// or the user's home directory, or the Windows Desktop directory if that
+// is not writable
 func getDefaultDir() (string, error) {
+	dir := filepath.Dir(os.Args[0])
+	if dir != "" && isWritable(dir) {
+		return dir, nil
+	}
+
 	user, err := user.Current()
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch user information: %v", err)
@@ -131,6 +139,16 @@ func getDefaultDir() (string, error) {
 	default:
 		return user.HomeDir, nil
 	}
+}
+
+func isWritable(dir string) bool {
+	tf, err := ioutil.TempFile(dir, "pinfinder")
+	if err != nil {
+		return false
+	}
+	defer os.Remove(tf.Name())
+	tf.Close()
+	return true
 }
 
 // oneOf returns true if s matches one of choices.
