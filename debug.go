@@ -74,7 +74,7 @@ func addFileToZip(zf *zip.Writer, path, fn string) error {
 
 // buildDebug constructs a .zip file containing debugging information in the given target
 // directory.  If targetDir is empty then it will use the user's home or desktop directory.
-func buildDebug(targetDir string, backupResult string, allBackups backups) (fn string, err error) {
+func buildDebug(targetDir string, backupResult string, allBackups *backups) (fn string, err error) {
 	if targetDir == "" {
 		targetDir, err = getDefaultDir()
 		if err != nil {
@@ -100,7 +100,7 @@ func buildDebug(targetDir string, backupResult string, allBackups backups) (fn s
 		return "", err
 	}
 
-	for _, backup := range allBackups {
+	for _, backup := range allBackups.backups {
 		if err := addBackupInfoToZip(zf, backup); err != nil {
 			return "", err
 		}

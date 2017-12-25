@@ -1,4 +1,4 @@
-// Copyright (c) 2016, Gareth Watts
+// Copyright (c) 2017, Gareth Watts
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -29,7 +29,7 @@
 // to find the PIN used for restricting permissions on the device (NOT the unlock PIN)
 
 // To regenerate licenses.go:
-// 1) go get github.com/gwatts/emebdfiles
+// 1) go get github.com/gwatts/embedfiles
 // 2) go generate
 
 //go:generate embedfiles -filename licenses.go -var licenses LICENSE*
@@ -40,6 +40,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/sha1"
+	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -55,17 +56,20 @@ import (
 	"time"
 
 	"github.com/DHowett/go-plist"
-
+	"github.com/howeyc/gopass"
 	"golang.org/x/crypto/pbkdf2"
 )
 
 const (
 	maxPIN                = 10000
-	version               = "1.5.1.dev2"
+	version               = "1.6.0"
 	restrictionsPlistName = "398bc9c2aeeab4cb0c12ada0f52eea12cf14f40b"
 
-	msgIsEncrypted = "backup is encrypted"
-	msgNoPasscode  = "no passcode stored"
+	msgIsEncrypted        = "backup is encrypted"
+	msgEncryptionDisabled = "encrypted backups not supported"
+	msgNoPasscode         = "no passcode stored"
+	msgIncorrectPassword  = "incorrect encryption password"
+	msgNoPassword         = "need encryption password"
 )
 
 var (
@@ -126,6 +130,14 @@ func parsePlist(fn string, target interface{}) error {
 	return plist.NewDecoder(f).Decode(target)
 }
 
+func fileExists(fn string) bool {
+	fi, err := os.Stat(fn)
+	if err != nil {
+		return false
+	}
+	return fi.Mode().IsRegular()
+}
+
 var backupInfoTpl = template.Must(template.New("backup").Parse(`
 Path: {{.Path}}
 Status: {{.Status}}
@@ -183,15 +195,19 @@ func (b *backup) isEncrypted() bool {
 	}
 }
 
-type backups []*backup
-
-func (b backups) Len() int { return len(b) }
-func (b backups) Less(i, j int) bool {
-	return b[i].Info.LastBackup.Before(b[j].Info.LastBackup)
+type backups struct {
+	encrypted bool
+	backups   []*backup
 }
-func (b backups) Swap(i, j int) { b[i], b[j] = b[j], b[i] }
 
-func loadBackups(syncDir string) (backups backups, err error) {
+func (b backups) Len() int { return len(b.backups) }
+func (b backups) Less(i, j int) bool {
+	return b.backups[i].Info.LastBackup.Before(b.backups[j].Info.LastBackup)
+}
+func (b backups) Swap(i, j int) { b.backups[i], b.backups[j] = b.backups[j], b.backups[i] }
+
+func loadBackups(syncDir string) (bs *backups, err error) {
+	bs = new(backups)
 	// loop over all directories and see whether they contain an Info.plist
 	d, err := os.Open(syncDir)
 	if err != nil {
@@ -208,11 +224,14 @@ func loadBackups(syncDir string) (backups backups, err error) {
 		}
 		path := filepath.Join(syncDir, fi.Name())
 		if b := loadBackup(path); b != nil {
-			backups = append(backups, b)
+			bs.backups = append(bs.backups, b)
+			if b.isEncrypted() {
+				bs.encrypted = true
+			}
 		}
 	}
-	sort.Sort(sort.Reverse(backups))
-	return backups, nil
+	sort.Sort(sort.Reverse(bs))
+	return bs, nil
 }
 
 func loadBackup(backupDir string) *backup {
@@ -233,19 +252,42 @@ func loadBackup(backupDir string) *backup {
 		b.RestrictionsPath = filepath.Join(backupDir, restrictionsPlistName[:2], restrictionsPlistName)
 	}
 
-	if err := parsePlist(b.RestrictionsPath, &b.Restrictions); os.IsNotExist(err) {
+	b.Path = backupDir
+	if !fileExists(b.RestrictionsPath) {
 		b.Status = msgNoPasscode
-
-	} else if err != nil {
-		if b.isEncrypted() {
-			b.Status = msgIsEncrypted
-		} else {
-			b.Status = err.Error()
-		}
+		return &b
 	}
 
-	b.Path = backupDir
+	if b.isEncrypted() {
+		decrypt(backupDir, &b)
+		return &b
+	}
+
+	if err := parsePlist(b.RestrictionsPath, &b.Restrictions); err != nil {
+		b.Status = err.Error()
+	}
+
 	return &b
+}
+
+var prompted bool
+var cachepw string
+
+func getpw() string {
+	if prompted {
+		return cachepw
+	}
+	prompted = true
+	fmt.Println("\nSome backups are encrypted; passcode recovery requires the")
+	fmt.Println("encryption password used with iTunes.  Press return to skip.\n")
+	fmt.Print("Enter iTunes Encryption Password: ")
+	pw, _ := gopass.GetPasswdMasked()
+	fmt.Println("")
+	cachepw = string(pw)
+	if cachepw != "" {
+		fmt.Println("Decryption may take a few minutes...")
+	}
+	return cachepw
 }
 
 type swg struct{ sync.WaitGroup }
@@ -292,7 +334,7 @@ func findPIN(key, salt []byte) (string, error) {
 
 	select {
 	case <-wg.WaitChan():
-		return "", errors.New("failed to calculate PIN number")
+		return "", errors.New("failed to calculate PIN")
 	case pin := <-found:
 		return pin, nil
 	}
@@ -336,21 +378,21 @@ func displayLicense() {
 	fmt.Println()
 }
 
-func generateReport(f io.Writer, includeDirName bool, allBackups backups) {
+func generateReport(f io.Writer, includeDirName bool, allBackups *backups) {
 	if includeDirName {
 		fmt.Fprintf(f, "%-70s", "BACKUP DIR")
 	}
-	fmt.Fprintf(f, "%-40.40s  %-25s  %s\n", "IOS DEVICE", "BACKUP TIME", "RESTRICTIONS PASSCODE")
-	failed := make(backups, 0)
+	fmt.Fprintf(f, "%-40.40s  %-7.7s  %-25s  %s\n", "IOS DEVICE", "IOS", "BACKUP TIME", "RESTRICTIONS PASSCODE")
+	failed := make([]*backup, 0)
 
-	foundEncrypted := false
-	for _, b := range allBackups {
+	for _, b := range allBackups.backups {
 		info := b.Info
 		if includeDirName {
 			fmt.Fprintf(f, "%-70s", filepath.Base(b.Path))
 		}
-		fmt.Fprintf(f, "%-40.40s  %s  ",
+		fmt.Fprintf(f, "%-40.40s  %-7.7s  %s  ",
 			info.DisplayName,
+			info.ProductVersion,
 			info.LastBackup.In(time.Local).Format("Jan _2, 2006 03:04 PM MST"))
 
 		if len(b.Restrictions.Key) > 0 {
@@ -363,17 +405,7 @@ func generateReport(f io.Writer, includeDirName bool, allBackups backups) {
 			}
 		} else {
 			fmt.Fprintln(f, b.Status)
-			if b.Status == msgIsEncrypted {
-				foundEncrypted = true
-			}
 		}
-	}
-
-	if foundEncrypted {
-		fmt.Fprintln(f, "")
-		fmt.Fprintln(f, "NOTE: Some backups had passcodes that are encrypted.")
-		fmt.Fprintln(f, "Select the device in iTunes, uncheck the \"Encrypt iPhone backup\" checkbox, ")
-		fmt.Fprintln(f, "re-sync and then run pinfinder again.")
 	}
 
 	fmt.Fprintln(f)
@@ -382,19 +414,30 @@ func generateReport(f io.Writer, includeDirName bool, allBackups backups) {
 		fmt.Fprintf(f, "%-20s: %s\n", "Product Name", b.Info.ProductName)
 		fmt.Fprintf(f, "%-20s: %s\n", "Product Type", b.Info.ProductType)
 		fmt.Fprintf(f, "%-20s: %s\n", "Product Version", b.Info.ProductVersion)
+		fmt.Fprintf(f, "%-20s: %s\n", "Salt", base64.StdEncoding.EncodeToString(b.Restrictions.Salt))
+		fmt.Fprintf(f, "%-20s: %s\n", "Key", base64.StdEncoding.EncodeToString(b.Restrictions.Key))
 
 		dumpFile(b.RestrictionsPath)
 		fmt.Fprintln(f, "")
 	}
 }
 
+func donate() {
+	fmt.Println("| DID PINFINDER SAVE THE DAY?")
+	fmt.Println("| Please consider donating a few dollars to say thanks!")
+	fmt.Println("| https://pinfinder.net/donate")
+	fmt.Println("")
+}
+
+var syncDir string
+
 func main() {
-	var syncDir string
 	var err error
-	var allBackups backups
+	var allBackups *backups
 
 	fmt.Println("PIN Finder", version)
-	fmt.Println("http://github.com/gwatts/pinfinder")
+	fmt.Println("iOS Restrictions Passcode Finder")
+	fmt.Println("https://pinfinder.net\n")
 
 	flag.Parse()
 
@@ -410,18 +453,19 @@ func main() {
 		if err != nil {
 			exit(101, true, err.Error())
 		}
+		fmt.Println("Sync Directory:", syncDir)
+		fmt.Println("Scanning backups...")
 		allBackups, err = loadBackups(syncDir)
 		if err != nil {
 			exit(101, true, err.Error())
 		}
-		fmt.Println("Sync Directory:", syncDir)
 
 	case 1:
 		b := loadBackup(args[0])
 		if b == nil {
 			exit(101, true, "Invalid backup directory")
 		}
-		allBackups = backups{b}
+		allBackups = &backups{encrypted: b.isEncrypted(), backups: []*backup{b}}
 
 	default:
 		exit(102, true, "Too many arguments")
@@ -442,5 +486,6 @@ func main() {
 	}
 
 	generateReport(os.Stdout, false, allBackups)
+	donate()
 	exit(0, false, "")
 }
