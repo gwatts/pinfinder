@@ -62,12 +62,12 @@ import (
 
 const (
 	maxPIN                = 10000
-	version               = "1.6.0"
+	version               = "1.6.1"
 	restrictionsPlistName = "398bc9c2aeeab4cb0c12ada0f52eea12cf14f40b"
 
 	msgIsEncrypted        = "backup is encrypted"
 	msgEncryptionDisabled = "encrypted backups not supported"
-	msgNoPasscode         = "no passcode stored"
+	msgNoPasscode         = "none"
 	msgIncorrectPassword  = "incorrect encryption password"
 	msgNoPassword         = "need encryption password"
 )
@@ -95,30 +95,38 @@ func dumpFile(fn string) {
 	}
 }
 
+func appendIfDir(dirs []string, dir string) []string {
+	if isDir(dir) {
+		return append(dirs, dir)
+	}
+	return dirs
+}
+
 // figure out where iTunes keeps its backups on the current OS
-func findSyncDir() (string, error) {
+func findSyncDirs() (dirs []string, err error) {
 
 	usr, err := user.Current()
 	if err != nil {
-		return "", fmt.Errorf("failed to get information about current user: %s", err)
+		return nil, fmt.Errorf("failed to get information about current user: %s", err)
 	}
 
-	var dir string
 	switch runtime.GOOS {
 	case "darwin":
-		dir = filepath.Join(usr.HomeDir, "Library", "Application Support", "MobileSync", "Backup")
+		dir := filepath.Join(usr.HomeDir, "Library", "Application Support", "MobileSync", "Backup")
+		dirs = appendIfDir(dirs, dir)
 
 	case "windows":
-		// this seesm to be correct for all versions of Windows.. Tested on XP and Windows 8
-		dir = filepath.Join(os.Getenv("APPDATA"), "Apple Computer", "MobileSync", "Backup")
+		// this seems to be correct for all versions of Windows.. Tested on XP and Windows 8
+		dir := filepath.Join(os.Getenv("APPDATA"), "Apple Computer", "MobileSync", "Backup")
+		dirs = appendIfDir(dirs, dir)
+
+		dir = filepath.Join(os.Getenv("USERPROFILE"), "Apple", "MobileSync", "Backup")
+		dirs = appendIfDir(dirs, dir)
 
 	default:
-		return "", errors.New("could not detect backup directory for this operating system; pass explicitly")
+		return nil, errors.New("could not detect backup directory for this operating system; pass explicitly")
 	}
-	if !isDir(dir) {
-		return "", fmt.Errorf("directory %s does not exist", dir)
-	}
-	return dir, nil
+	return dirs, nil
 }
 
 func parsePlist(fn string, target interface{}) error {
@@ -206,32 +214,31 @@ func (b backups) Less(i, j int) bool {
 }
 func (b backups) Swap(i, j int) { b.backups[i], b.backups[j] = b.backups[j], b.backups[i] }
 
-func loadBackups(syncDir string) (bs *backups, err error) {
-	bs = new(backups)
+func (b *backups) loadBackups(syncDir string) error {
 	// loop over all directories and see whether they contain an Info.plist
 	d, err := os.Open(syncDir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open directory %q: %s", syncDir, err)
+		return fmt.Errorf("failed to open directory %q: %s", syncDir, err)
 	}
 	defer d.Close()
 	fl, err := d.Readdir(-1)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read directory %q: %s", syncDir, err)
+		return fmt.Errorf("failed to read directory %q: %s", syncDir, err)
 	}
 	for _, fi := range fl {
 		if !fi.Mode().IsDir() {
 			continue
 		}
 		path := filepath.Join(syncDir, fi.Name())
-		if b := loadBackup(path); b != nil {
-			bs.backups = append(bs.backups, b)
-			if b.isEncrypted() {
-				bs.encrypted = true
+		if backup := loadBackup(path); backup != nil {
+			b.backups = append(b.backups, backup)
+			if backup.isEncrypted() {
+				b.encrypted = true
 			}
 		}
 	}
-	sort.Sort(sort.Reverse(bs))
-	return bs, nil
+	sort.Sort(sort.Reverse(b))
+	return nil
 }
 
 func loadBackup(backupDir string) *backup {
@@ -279,8 +286,8 @@ func getpw() string {
 	}
 	prompted = true
 	fmt.Println("\nSome backups are encrypted; passcode recovery requires the")
-	fmt.Println("encryption password used with iTunes.  Press return to skip.\n")
-	fmt.Print("Enter iTunes Encryption Password: ")
+	fmt.Println("\nencryption password used with iTunes.  Press return to skip.")
+	fmt.Print("\nEnter iTunes Encryption Password: ")
 	pw, _ := gopass.GetPasswdMasked()
 	fmt.Println("")
 	cachepw = string(pw)
@@ -382,7 +389,7 @@ func generateReport(f io.Writer, includeDirName bool, allBackups *backups) {
 	if includeDirName {
 		fmt.Fprintf(f, "%-70s", "BACKUP DIR")
 	}
-	fmt.Fprintf(f, "%-40.40s  %-7.7s  %-25s  %s\n", "IOS DEVICE", "IOS", "BACKUP TIME", "RESTRICTIONS PASSCODE")
+	fmt.Fprintf(f, "%-35.35s  %-7.7s  %-25s  %s\n", "IOS DEVICE", "IOS", "BACKUP TIME", "RESTRICTIONS PASSCODE")
 	failed := make([]*backup, 0)
 
 	for _, b := range allBackups.backups {
@@ -390,7 +397,7 @@ func generateReport(f io.Writer, includeDirName bool, allBackups *backups) {
 		if includeDirName {
 			fmt.Fprintf(f, "%-70s", filepath.Base(b.Path))
 		}
-		fmt.Fprintf(f, "%-40.40s  %-7.7s  %s  ",
+		fmt.Fprintf(f, "%-35.35s  %-7.7s  %s  ",
 			info.DisplayName,
 			info.ProductVersion,
 			info.LastBackup.In(time.Local).Format("Jan _2, 2006 03:04 PM MST"))
@@ -432,12 +439,12 @@ func donate() {
 var syncDir string
 
 func main() {
-	var err error
-	var allBackups *backups
+	allBackups := new(backups)
 
 	fmt.Println("PIN Finder", version)
 	fmt.Println("iOS Restrictions Passcode Finder")
-	fmt.Println("https://pinfinder.net\n")
+	fmt.Println("https://pinfinder.net")
+	fmt.Println()
 
 	flag.Parse()
 
@@ -449,15 +456,17 @@ func main() {
 	args := flag.Args()
 	switch len(args) {
 	case 0:
-		syncDir, err = findSyncDir()
+		syncDirs, err := findSyncDirs()
 		if err != nil {
 			exit(101, true, err.Error())
 		}
-		fmt.Println("Sync Directory:", syncDir)
+		fmt.Println("Sync Directories:", syncDirs)
 		fmt.Println("Scanning backups...")
-		allBackups, err = loadBackups(syncDir)
-		if err != nil {
-			exit(101, true, err.Error())
+
+		for _, syncDir := range syncDirs {
+			if err := allBackups.loadBackups(syncDir); err != nil {
+				exit(101, true, err.Error())
+			}
 		}
 
 	case 1:

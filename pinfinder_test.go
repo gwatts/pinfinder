@@ -180,36 +180,37 @@ func TestLoadBackups(t *testing.T) {
 	tmpDir := setupDataDir()
 	defer os.RemoveAll(tmpDir)
 
-	b, err := loadBackups(tmpDir)
+	b := new(backups)
+	err := b.loadBackups(tmpDir)
 	if err != nil {
 		t.Fatal("loadBackups failed", err)
 	}
-	if len(b) != 5 {
-		t.Fatal("Incorrect backup count", len(b))
+	if len(b.backups) != 5 {
+		t.Fatal("Incorrect backup count", len(b.backups))
 	}
 
 	// Should of been sorted into reverse time order
-	if devname := b[0].Info.DisplayName; devname != "ios10 device" {
+	if devname := b.backups[0].Info.DisplayName; devname != "ios10 device" {
 		t.Errorf("First entry is not ios10 device got %q", devname)
 	}
-	if devname := b[1].Info.DisplayName; devname != "device two" {
+	if devname := b.backups[1].Info.DisplayName; devname != "device two" {
 		t.Errorf("Second entry is not device two, got %q", devname)
 	}
-	if devname := b[2].Info.DisplayName; devname != "device one" {
+	if devname := b.backups[2].Info.DisplayName; devname != "device one" {
 		t.Errorf("Third entry is not device one, got %q", devname)
 	}
-	if devname := b[3].Info.DisplayName; devname != "device three" {
+	if devname := b.backups[3].Info.DisplayName; devname != "device three" {
 		t.Errorf("Fourth entry is not device wthree, got %q", devname)
 	}
-	if !b[3].isEncrypted() {
+	if !b.backups[3].isEncrypted() {
 		t.Error("device three not marked as encrypted")
 	}
 
-	if status := b[3].Status; status != msgIsEncrypted {
+	if status := b.backups[3].Status; status != msgIsEncrypted {
 		t.Error("device three does not have correct status: ", status)
 	}
 
-	if status := b[4].Status; status != msgNoPasscode {
+	if status := b.backups[4].Status; status != msgNoPasscode {
 		t.Error("device four does not have correct status", status)
 	}
 }
