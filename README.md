@@ -42,3 +42,5 @@ https://nbalkota.wordpress.com/2014/04/05/recover-your-forgotten-ios-7-restricti
 ## Other Notes
 
 Last tested with iOS 8 through 11.2.1 on OS X 10.10, 10.11, 10.12 Windows XP and Windows 8 with iTunes 12.7
+
+It's known __not__ to work with iOS 12 at the current time.
