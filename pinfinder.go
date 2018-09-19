@@ -52,6 +52,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -62,7 +63,7 @@ import (
 
 const (
 	maxPIN                = 10000
-	version               = "1.6.1"
+	version               = "1.6.2"
 	restrictionsPlistName = "398bc9c2aeeab4cb0c12ada0f52eea12cf14f40b"
 
 	msgIsEncrypted        = "backup is encrypted"
@@ -70,6 +71,7 @@ const (
 	msgNoPasscode         = "none"
 	msgIncorrectPassword  = "incorrect encryption password"
 	msgNoPassword         = "need encryption password"
+	msgIos12              = "iOS 12 not supported yet :-("
 )
 
 var (
@@ -250,6 +252,11 @@ func loadBackup(backupDir string) *backup {
 
 	if err := parsePlist(filepath.Join(backupDir, "Manifest.plist"), &b.Manifest); err != nil {
 		return nil // no Manifest.plist == invaild backup dir
+	}
+
+	if strings.HasPrefix(b.Info.ProductVersion, "12.") {
+		b.Status = msgIos12
+		return &b
 	}
 
 	b.RestrictionsPath = filepath.Join(backupDir, restrictionsPlistName)
