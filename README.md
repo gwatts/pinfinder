@@ -17,7 +17,7 @@ can be found [at Apple's web site](https://support.apple.com/en-us/HT201304).
 If you are running on a platform other than Mac, Windows or Linux you will need to compile the program yourself:
 
 
-1. [Download and install Go](https://golang.org/doc/install) - Be sure to follow the instructions to [setup a workspace](https://golang.org/doc/code.html#Workspaces) and set a `GOPATH` environment variable to suit
+1. [Download and install Go](https://golang.org/doc/install) 
 2. run `go get github.com/gwatts/pinfinder`
 
 If you just want to compile the program as quick as possible, install Go from the web site above, and run the following steps to build and install it to `~/pinfinder/bin/pinfinder`
@@ -41,6 +41,6 @@ https://nbalkota.wordpress.com/2014/04/05/recover-your-forgotten-ios-7-restricti
 
 ## Other Notes
 
-Last tested with iOS 8 through 11.2.1 on OS X 10.10, 10.11, 10.12 Windows XP and Windows 8 with iTunes 12.7
+Last tested with iOS 8 through 12.0.1 on OS X 10.10, 10.11, 10.12, 10.12, 10.13 Windows XP and Windows 8 with iTunes 12.7
 
-It's known __not__ to work with iOS 12 at the current time.
+NOTE: Recovery of an iOS 12 passcode requires an **encrypted** iTunes backup.

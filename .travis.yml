@@ -1,1 +1,4 @@
 language: go
+
+env:
+    - GO111MODULE=on

@@ -52,18 +52,20 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/DHowett/go-plist"
+	"github.com/gwatts/ios/keychain"
 	"github.com/howeyc/gopass"
 	"golang.org/x/crypto/pbkdf2"
 )
 
 const (
 	maxPIN                = 10000
-	version               = "1.6.2"
+	version               = "1.7.0"
 	restrictionsPlistName = "398bc9c2aeeab4cb0c12ada0f52eea12cf14f40b"
 
 	msgIsEncrypted        = "backup is encrypted"
@@ -71,7 +73,8 @@ const (
 	msgNoPasscode         = "none"
 	msgIncorrectPassword  = "incorrect encryption password"
 	msgNoPassword         = "need encryption password"
-	msgIos12              = "iOS 12 not supported yet :-("
+	msgKeychainLoadFailed = "failed to read keychain"
+	msgEncryptedNeeded    = "need encrypted backup"
 )
 
 var (
@@ -168,6 +171,7 @@ type backup struct {
 	Path             string
 	Status           string
 	RestrictionsPath string
+	UsesScreenTime   bool
 	Info             struct {
 		LastBackup     time.Time `plist:"Last Backup Date"`
 		DisplayName    string    `plist:"Display Name"`
@@ -182,6 +186,7 @@ type backup struct {
 		Key  []byte `plist:"RestrictionsPasswordKey"`
 		Salt []byte `plist:"RestrictionsPasswordSalt"`
 	}
+	Keychain *keychain.Keychain
 }
 
 func (b *backup) debugInfo() string {
@@ -203,6 +208,10 @@ func (b *backup) isEncrypted() bool {
 	default:
 		return false
 	}
+}
+
+func (b *backup) isIOS12() bool {
+	return majorVersion(b.Info.ProductVersion) >= 12
 }
 
 type backups struct {
@@ -243,6 +252,18 @@ func (b *backups) loadBackups(syncDir string) error {
 	return nil
 }
 
+func majorVersion(v string) int {
+	parts := strings.Split(v, ".")
+	if len(parts) < 1 {
+		return 0
+	}
+	maj, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0
+	}
+	return maj
+}
+
 func loadBackup(backupDir string) *backup {
 	var b backup
 
@@ -254,31 +275,35 @@ func loadBackup(backupDir string) *backup {
 		return nil // no Manifest.plist == invaild backup dir
 	}
 
-	if strings.HasPrefix(b.Info.ProductVersion, "12.") {
-		b.Status = msgIos12
-		return &b
-	}
-
-	b.RestrictionsPath = filepath.Join(backupDir, restrictionsPlistName)
-	if _, err := os.Stat(b.RestrictionsPath); err != nil {
-		// iOS 10 moved backup files into sub-folders beginning with
-		// the first 2 letters of the filename.
-		b.RestrictionsPath = filepath.Join(backupDir, restrictionsPlistName[:2], restrictionsPlistName)
-	}
-
 	b.Path = backupDir
-	if !fileExists(b.RestrictionsPath) {
-		b.Status = msgNoPasscode
-		return &b
-	}
 
-	if b.isEncrypted() {
+	switch {
+	case b.isIOS12():
+		if !b.isEncrypted() {
+			b.Status = msgEncryptedNeeded
+			return &b
+		}
 		decrypt(backupDir, &b)
-		return &b
-	}
 
-	if err := parsePlist(b.RestrictionsPath, &b.Restrictions); err != nil {
-		b.Status = err.Error()
+	default:
+		b.RestrictionsPath = filepath.Join(backupDir, restrictionsPlistName)
+		if _, err := os.Stat(b.RestrictionsPath); err != nil {
+			// iOS 10 moved backup files into sub-folders beginning with
+			// the first 2 letters of the filename.
+			b.RestrictionsPath = filepath.Join(backupDir, restrictionsPlistName[:2], restrictionsPlistName)
+		}
+
+		if !fileExists(b.RestrictionsPath) {
+			b.Status = msgNoPasscode
+			return &b
+		}
+		if b.isEncrypted() {
+			decrypt(backupDir, &b)
+			return &b
+		}
+		if err := parsePlist(b.RestrictionsPath, &b.Restrictions); err != nil {
+			b.Status = err.Error()
+		}
 	}
 
 	return &b
@@ -293,7 +318,7 @@ func getpw() string {
 	}
 	prompted = true
 	fmt.Println("\nSome backups are encrypted; passcode recovery requires the")
-	fmt.Println("\nencryption password used with iTunes.  Press return to skip.")
+	fmt.Println("encryption password used with iTunes.  Press return to skip.")
 	fmt.Print("\nEnter iTunes Encryption Password: ")
 	pw, _ := gopass.GetPasswdMasked()
 	fmt.Println("")
@@ -354,6 +379,18 @@ func findPIN(key, salt []byte) (string, error) {
 	}
 }
 
+func findPINFromKeychain(b *backup) (string, error) {
+	items := b.Keychain.General.FindByKeyMatch(keychain.KService, "ParentalControls")
+	if len(items) == 0 {
+		return "", fmt.Errorf("none")
+	}
+	code, ok := items[0][keychain.KData].([]byte)
+	if !ok {
+		return "", fmt.Errorf(msgNoPasscode)
+	}
+	return string(code), nil
+}
+
 func exit(status int, addUsage bool, errfmt string, a ...interface{}) {
 	if errfmt != "" {
 		fmt.Fprintf(os.Stderr, errfmt+"\n", a...)
@@ -409,7 +446,15 @@ func generateReport(f io.Writer, includeDirName bool, allBackups *backups) {
 			info.ProductVersion,
 			info.LastBackup.In(time.Local).Format("Jan _2, 2006 03:04 PM MST"))
 
-		if len(b.Restrictions.Key) > 0 {
+		if b.UsesScreenTime {
+			pin, err := findPINFromKeychain(b)
+			if err != nil {
+				fmt.Fprintln(f, err.Error())
+			} else {
+				fmt.Fprintln(f, pin)
+			}
+
+		} else if len(b.Restrictions.Key) > 0 {
 			pin, err := findPIN(b.Restrictions.Key, b.Restrictions.Salt)
 			if err != nil {
 				fmt.Fprintln(f, "Failed to find passcode")

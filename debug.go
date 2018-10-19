@@ -41,6 +41,9 @@ func addBackupInfoToZip(zf *zip.Writer, b *backup) error {
 	// Enumerate the files the backup contains
 	var filelist bytes.Buffer
 	filepath.Walk(b.Path, func(fpath string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
 		if !info.IsDir() {
 			fmt.Fprintf(&filelist, "%-10d %s\n", info.Size(), fpath[len(b.Path)+1:])
 			if oneOf(path.Base(fpath), captureFilenames) {
