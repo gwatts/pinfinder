@@ -17,19 +17,17 @@ can be found [at Apple's web site](https://support.apple.com/en-us/HT201304).
 If you are running on a platform other than Mac, Windows or Linux you will need to compile the program yourself:
 
 
-1. [Download and install Go](https://golang.org/doc/install) 
-2. run `go get github.com/gwatts/pinfinder`
+First [Download and install Go](https://golang.org/doc/install).
 
-If you just want to compile the program as quick as possible, install Go from the web site above, and run the following steps to build and install it to `~/pinfinder/bin/pinfinder`
+Once Go is installed, you can clone the pinfinder repo and build it.   Pinfinder uses the new module system found in Go 1.11 and later to track its dependencies.
+
 
 ```bash
 cd ~
-mkdir ~/pinfinder
+git clone https://github.com/gwatts/pinfinder.git
 cd pinfinder
-mkdir src bin pkg
-export GOPATH=~/pinfinder
-go get github.com/gwatts/pinfinder
-bin/pinfinder
+GO111MODULE=on go build .
+./pinfinder
 ```
 
 ## Other resources
