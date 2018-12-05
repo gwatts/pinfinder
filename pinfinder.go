@@ -55,6 +55,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/DHowett/go-plist"
@@ -65,7 +66,7 @@ import (
 
 const (
 	maxPIN                = 10000
-	version               = "1.7.0"
+	version               = "1.7.1"
 	restrictionsPlistName = "398bc9c2aeeab4cb0c12ada0f52eea12cf14f40b"
 
 	msgIsEncrypted        = "backup is encrypted"
@@ -229,6 +230,9 @@ func (b *backups) loadBackups(syncDir string) error {
 	// loop over all directories and see whether they contain an Info.plist
 	d, err := os.Open(syncDir)
 	if err != nil {
+		if err := isBadMacPerms(err); err != nil {
+			return err
+		}
 		return fmt.Errorf("failed to open directory %q: %s", syncDir, err)
 	}
 	defer d.Close()
@@ -241,7 +245,7 @@ func (b *backups) loadBackups(syncDir string) error {
 			continue
 		}
 		path := filepath.Join(syncDir, fi.Name())
-		if backup := loadBackup(path); backup != nil {
+		if backup, _ := loadBackup(path); backup != nil {
 			b.backups = append(b.backups, backup)
 			if backup.isEncrypted() {
 				b.encrypted = true
@@ -264,15 +268,15 @@ func majorVersion(v string) int {
 	return maj
 }
 
-func loadBackup(backupDir string) *backup {
+func loadBackup(backupDir string) (*backup, error) {
 	var b backup
 
 	if err := parsePlist(filepath.Join(backupDir, "Info.plist"), &b.Info); err != nil {
-		return nil // no Info.plist == invalid backup dir
+		return nil, err // no Info.plist == invalid backup dir
 	}
 
 	if err := parsePlist(filepath.Join(backupDir, "Manifest.plist"), &b.Manifest); err != nil {
-		return nil // no Manifest.plist == invaild backup dir
+		return nil, err // no Manifest.plist == invaild backup dir
 	}
 
 	b.Path = backupDir
@@ -281,7 +285,7 @@ func loadBackup(backupDir string) *backup {
 	case b.isIOS12():
 		if !b.isEncrypted() {
 			b.Status = msgEncryptedNeeded
-			return &b
+			return &b, nil
 		}
 		decrypt(backupDir, &b)
 
@@ -295,18 +299,18 @@ func loadBackup(backupDir string) *backup {
 
 		if !fileExists(b.RestrictionsPath) {
 			b.Status = msgNoPasscode
-			return &b
+			return &b, nil
 		}
 		if b.isEncrypted() {
 			decrypt(backupDir, &b)
-			return &b
+			return &b, nil
 		}
 		if err := parsePlist(b.RestrictionsPath, &b.Restrictions); err != nil {
 			b.Status = err.Error()
 		}
 	}
 
-	return &b
+	return &b, nil
 }
 
 var prompted bool
@@ -403,6 +407,26 @@ func exit(status int, addUsage bool, errfmt string, a ...interface{}) {
 		bufio.NewReader(os.Stdin).ReadBytes('\n')
 	}
 	os.Exit(status)
+}
+
+var badMacPerms = errors.New("mac full disk access required")
+
+func isBadMacPerms(err error) error {
+	if runtime.GOOS != "darwin" {
+		return nil
+	}
+	perr, ok := err.(*os.PathError)
+	if !ok || perr.Err != syscall.EPERM {
+		return nil
+	}
+	return badMacPerms
+}
+
+func exitBadMacPerms() {
+	fmt.Fprintln(os.Stderr, "\nOperation not permitted: Full Disk Access Required")
+	fmt.Fprintln(os.Stderr, "Please grant \"Full Disk Access\" to Terminal to run pinfinder")
+	fmt.Fprintln(os.Stderr, "See https://pinfinder.net/mac.html for help")
+	os.Exit(130)
 }
 
 func usage() {
@@ -517,13 +541,19 @@ func main() {
 
 		for _, syncDir := range syncDirs {
 			if err := allBackups.loadBackups(syncDir); err != nil {
+				if isBadMacPerms(err); err != nil {
+					exitBadMacPerms()
+				}
 				exit(101, true, err.Error())
 			}
 		}
 
 	case 1:
-		b := loadBackup(args[0])
-		if b == nil {
+		b, err := loadBackup(args[0])
+		if err != nil {
+			if isBadMacPerms(err); err != nil {
+				exitBadMacPerms()
+			}
 			exit(101, true, "Invalid backup directory")
 		}
 		allBackups = &backups{encrypted: b.isEncrypted(), backups: []*backup{b}}
