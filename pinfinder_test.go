@@ -163,7 +163,7 @@ func TestLoadBackup(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	path := filepath.Join(tmpDir, "backup1")
-	backup := loadBackup(path)
+	backup, _ := loadBackup(path)
 	if backup == nil {
 		t.Fatal("loadBackup failed")
 	}
@@ -221,7 +221,7 @@ func TestParseRestriction(t *testing.T) {
 
 	for _, base := range []string{"backup1", "ios10backup"} {
 		path := filepath.Join(tmpDir, base)
-		b := loadBackup(path)
+		b, _ := loadBackup(path)
 		if b == nil {
 			t.Fatal("Failed to load backup")
 		}
