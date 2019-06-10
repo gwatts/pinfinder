@@ -114,7 +114,7 @@ func execute() {
 	fmt.Println("Mac Detected. Perfoming Catalina Discovery...")
 	out, err := exec.Command("defaults", "read", "loginwindow", "SystemVersionStampAsString").Output()
 	if err != nil {
-		fmt.Println("Failed to determine if OS is Catalina because: %s\n", err)
+		fmt.Println("Failed to determine if OS is Catalina")
 	}
 	output := string(out[:])
 	cversion := "10.15"
