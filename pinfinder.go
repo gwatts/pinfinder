@@ -112,8 +112,7 @@ func appendIfDir(dirs []string, dir string) []string {
 // Copyright (c) 2019, real_acmkan. Test for macOS Catalina as Backup Location may change
 func execute() {
 	fmt.Println("Mac Detected. Perfoming Catalina Discovery...")
-	catalina := []string{"read", "loginwindow", "SystemVersionStampAsString"}
-	out, err := exec.Command("defaults", catalina).Output()
+	out, err := exec.Command("defaults", "read", "loginwindow", "SystemVersionStampAsString").Output()
 	if err != nil {
 		fmt.Println("Failed to determine if OS is Catalina because: %s", err)
 	}
