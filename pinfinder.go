@@ -48,6 +48,7 @@ import (
 	"io"
 	"os"
 	"os/user"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"runtime"
@@ -108,7 +109,23 @@ func appendIfDir(dirs []string, dir string) []string {
 	return dirs
 }
 
-// figure out where iTunes keeps its backups on the current OS
+// Copyright (c) 2019, real_acmkan. Test for macOS Catalina as Backup Location may change
+func execute() {
+	fmt.Println("Mac Detected. Perfoming Catalina Discovery...")
+	out, err := exec.Command("defaults", "read", "loginwindow", "SystemVersionStampAsString").Output()
+	if err != nil {
+		fmt.Println("Failed to determine if OS is Catalina")
+	}
+	output := string(out[:])
+	cversion := "10.15"
+	if output == cversion {
+		fmt.Println("You're running macOS Catalina, please report if Backup Directory can't be found.")
+	} else {
+		fmt.Println("Continuing...")
+	}
+}
+
+// figure out where iTunes/Finder keeps its backups on the current OS
 func findSyncDirs() (dirs []string, err error) {
 
 	usr, err := user.Current()
@@ -118,6 +135,7 @@ func findSyncDirs() (dirs []string, err error) {
 
 	switch runtime.GOOS {
 	case "darwin":
+		execute()
 		dir := filepath.Join(usr.HomeDir, "Library", "Application Support", "MobileSync", "Backup")
 		dirs = appendIfDir(dirs, dir)
 
