@@ -5,7 +5,7 @@
 Pinfinder is a small program for Mac, Windows and Linux which attempts to to find the screen time and/or restrictions passcode
 for an iOS device (iPhone, iPad or iPod Touch) from a normal backup of the device made by iTunes on your computer.
 
-See https://pinfinder.net/ for quick instructions on how to download and use it.
+See https://pinfinder.net/ for quick instructions on how to download and use it.  It works with devices running iOS 8 though iOS 12.4.4 - It does **not** support iOS 13 and later, as the passcode is no longer stored in the iTunes backup - See https://pinfinder.net/faq.html#ios13
 
 **NOTE**: This program will **not** help you unlock a locked device - It can only help recover the restrictions
 passcode as found in `Settings -> General -> Restrictions`.  More information about Restrictions
@@ -44,3 +44,5 @@ https://nbalkota.wordpress.com/2014/04/05/recover-your-forgotten-ios-7-restricti
 Last tested with iOS 8 through 12.2 on OS X 10.10, 10.11, 10.12, 10.12, 10.13 Windows XP and Windows 8 with iTunes 12.7
 
 NOTE: Recovery of an iOS 12 passcode requires an **encrypted** iTunes backup.
+
+Pinfinder is **not compatible with iOS 13 and later** - See https://pinfinder.net/faq.html#ios13
