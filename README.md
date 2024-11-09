@@ -3,6 +3,10 @@
 [![Build Status](https://travis-ci.org/gwatts/pinfinder.svg?branch=master)](https://travis-ci.org/gwatts/pinfinder)
 ![Download Count](https://img.shields.io/github/downloads/gwatts/pinfinder/total)
 
+**This project is archived** - There will be no further updates to it - It does not support iOS 13 and later.
+
+
+
 Pinfinder is a small program for Mac, Windows and Linux which attempts to to find the screen time and/or restrictions passcode
 for an iOS device (iPhone, iPad or iPod Touch) from a normal backup of the device made by iTunes on your computer.
 
